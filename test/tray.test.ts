@@ -7,6 +7,12 @@ vi.mock('../src/config', () => ({
   setNotificationsEnabled: vi.fn(),
   getDiscordEnabled: () => true,
   setDiscordEnabled: vi.fn(),
+  getLastfmEnabled: () => false,
+  setLastfmEnabled: vi.fn(),
+  getLastfmSessionKey: () => null,
+  getLastfmUsername: () => null,
+  setLastfmSession: vi.fn(),
+  clearLastfmSession: vi.fn(),
   getTheme: vi.fn(() => 'apple-music'),
   setTheme: vi.fn(),
   getStartPage: () => 'new',
@@ -27,6 +33,8 @@ const mockTrayStrings: TrayStrings = {
   notifications: 'Notifications',
   discord: 'Discord',
   player: 'Player',
+  lastfmConnect: 'Connect to Last.fm…',
+  lastfmDisconnect: 'Disconnect',
   startPage: 'Start Page',
   startPageHome: 'Home',
   startPageNew: 'New',
@@ -64,6 +72,14 @@ vi.mock('../src/i18n', () => ({
   getAboutStrings: () => ({ close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
   getUpdateStrings: () => ({ updateAvailable: 'Update available: {version}', upToDate: 'Up to date' }),
   getAutoUpdateStrings: () => ({ ready: 'Restart to update' }),
+}));
+
+vi.mock('../src/integrations/lastfm', () => ({
+  enable: vi.fn(),
+  disable: vi.fn(),
+  startAuth: vi.fn(),
+  disconnect: vi.fn(),
+  isConfigured: () => false,
 }));
 
 vi.mock('../src/update', () => ({

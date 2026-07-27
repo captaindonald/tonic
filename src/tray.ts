@@ -4,13 +4,14 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, setMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, setMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { BUNDLED_THEMES, themeLabel } from './palettes';
 import { applyTheme, hasCustomCss, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
+import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
 import { allServices } from './musicService';
@@ -26,6 +27,7 @@ const menuIconFileMap: Record<string, string> = {
   'start-page': 'music',
   'notifications': 'bell',
   'discord': 'discord',
+  'lastfm': 'lastfm',
   'style': 'palette',
   'zoom': 'expand',
   'update-ready': 'rotate',
@@ -49,6 +51,7 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'start-page': 'music.note',
   'notifications': 'bell',
   'discord': 'bubble.left.and.bubble.right',
+  'lastfm': 'dot.radiowaves.left.and.right',
   'style': 'paintpalette',
   'zoom': 'arrow.up.left.and.arrow.down.right',
   'update-ready': 'arrow.clockwise',
@@ -368,6 +371,51 @@ function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorO
   };
 }
 
+function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, refresh } = ctx;
+  const connected = !!getLastfmSessionKey();
+  const username = getLastfmUsername();
+  const icon = getMenuIcon('lastfm');
+
+  // Not yet linked: a single, obvious call to action that opens the browser
+  // approval flow. No API keys or configuration for the user to deal with.
+  if (!connected) {
+    return {
+      label: 'Last.fm',
+      ...(icon ? { icon } : {}),
+      submenu: [
+        {
+          label: strings.lastfmConnect,
+          click: () => { setLastfmEnabled(true); startLastfmAuth(refresh); refresh(); },
+        },
+      ],
+    };
+  }
+
+  const enabled = getLastfmEnabled();
+  return {
+    label: `Last.fm: ${enabled ? strings.on : strings.off}`,
+    ...(icon ? { icon } : {}),
+    submenu: [
+      {
+        label: strings.on,
+        type: 'radio',
+        checked: enabled,
+        click: () => { setLastfmEnabled(true); enableLastfm(); refresh(); },
+      },
+      {
+        label: strings.off,
+        type: 'radio',
+        checked: !enabled,
+        click: () => { setLastfmEnabled(false); disableLastfm(); refresh(); },
+      },
+      { type: 'separator' },
+      { label: `✓ ${username}`, enabled: false },
+      { label: strings.lastfmDisconnect, click: () => { disconnectLastfm(); refresh(); } },
+    ],
+  };
+}
+
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const isClassical = getMusicService() === 'classical';
@@ -655,6 +703,7 @@ function buildContextMenu(tray: Tray): Menu {
     buildNotificationsSubmenu(ctx),
     buildCloseToTraySubmenu(ctx),
     buildDiscordSubmenu(ctx),
+    ...(isLastfmConfigured() ? [buildLastfmSubmenu(ctx)] : []),
     buildStyleSubmenu(ctx),
     buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
     ...buildUpdateMenuItems(),
