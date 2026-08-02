@@ -19,6 +19,7 @@ const afterPack = require('../build/afterPack.cjs').default as (context: {
   electronPlatformName: string;
 }) => Promise<void>;
 const builderWorkflow = readFileSync('.github/workflows/builder.yml', 'utf8');
+const manualSnapWorkflow = readFileSync('.github/workflows/publish-snap-manual.yml', 'utf8');
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -99,4 +100,9 @@ it('restricts Last.fm credentials to tag builds', () => {
   expect(builderWorkflow).toContain(
     "SIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_SECRET || '' }}",
   );
+});
+
+it('does not expose EVS credentials to the Linux Snap build', () => {
+  expect(manualSnapWorkflow).not.toContain('EVS_ACCOUNT_NAME');
+  expect(manualSnapWorkflow).not.toContain('EVS_PASSWD');
 });
