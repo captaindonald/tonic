@@ -107,7 +107,22 @@ describe('Player event forwarding', () => {
     const listener = vi.fn();
     player.on('nowPlayingItemDidChange', listener);
 
-    const payload = { name: 'Track', artistName: 'Artist' };
+    const payload = {
+      name: 'Track',
+      artistName: 'Artist',
+      albumName: 'Album',
+      artworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/track/512x512.jpg',
+      durationInMillis: 240_000,
+      url: 'https://music.apple.com/gb/song/track/1',
+      genreNames: ['Electronic'],
+      trackId: '1',
+      trackNumber: 2,
+      discNumber: 1,
+      composerName: 'Composer',
+      releaseDate: '2026-08-02',
+      playParams: { catalogId: '1', globalId: 'global-1', kind: 'song', isLibrary: true },
+      sourceHost: 'music.apple.com',
+    };
     player.handleNowPlayingItemDidChange(payload);
 
     expect(listener).toHaveBeenCalledWith(payload);
@@ -230,6 +245,51 @@ describe('Player handle* payload validation', () => {
 
     // The cast is the point of the test: this argument arrives untyped over IPC.
     (player[method] as (p: unknown) => void)(payload);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  const BAD_METADATA: ReadonlyArray<readonly [string, unknown]> = [
+    ['non-string name', { name: 123 }],
+    ['non-string artist', { artistName: false }],
+    ['non-string album', { albumName: {} }],
+    ['non-string URL', { url: 123 }],
+    ['HTTP metadata URL', { url: 'http://music.apple.com/gb/song/track/1' }],
+    ['non-Apple metadata URL', { url: 'https://example.com/song/track/1' }],
+    ['non-string track id', { trackId: 123 }],
+    ['non-string composer', { composerName: [] }],
+    ['non-string release date', { releaseDate: 2026 }],
+    ['negative duration', { durationInMillis: -1 }],
+    ['fractional duration', { durationInMillis: 1.5 }],
+    ['duration unsafe after conversion to microseconds', {
+      durationInMillis: Math.floor(Number.MAX_SAFE_INTEGER / 1_000) + 1,
+    }],
+    ['negative track number', { trackNumber: -1 }],
+    ['fractional disc number', { discNumber: 1.5 }],
+    ['track number outside D-Bus int32 range', { trackNumber: 2_147_483_648 }],
+    ['non-array genres', { genreNames: 'Electronic' }],
+    ['non-string genre', { genreNames: ['Electronic', 123] }],
+    ['null playParams', { playParams: null }],
+    ['array playParams', { playParams: [] }],
+    ['non-string playParams catalog id', { playParams: { catalogId: 123 } }],
+    ['non-string playParams global id', { playParams: { globalId: false } }],
+    ['non-string playParams kind', { playParams: { kind: 123 } }],
+    ['non-boolean playParams library flag', { playParams: { isLibrary: 'yes' } }],
+    ['HTTP artwork URL', { artworkUrl: 'http://is1-ssl.mzstatic.com/image.jpg' }],
+    ['non-Apple artwork host', { artworkUrl: 'https://example.com/image.jpg' }],
+    ['Apple hostname suffix', { artworkUrl: 'https://mzstatic.com.attacker.test/image.jpg' }],
+    ['malformed artwork URL', { artworkUrl: 'not a URL' }],
+    ['non-string source host', { sourceHost: 123 }],
+    ['unknown source host', { sourceHost: 'attacker.test' }],
+    ['unknown field', { name: 'Track', extra: true }],
+  ];
+
+  it.each(BAD_METADATA)('handleNowPlayingItemDidChange ignores %s', (_description, payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('nowPlayingItemDidChange', listener);
+
+    player.handleNowPlayingItemDidChange(payload);
 
     expect(listener).not.toHaveBeenCalled();
   });

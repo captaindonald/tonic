@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { getMusicService } from './config';
-import { getService, getServiceByHost } from './musicService';
+import { getService, getServiceByHost, isAllowedNavigationUrl } from './musicService';
 
 const playerLog = log.scope('player');
 
@@ -29,6 +29,66 @@ export interface NowPlayingPayload {
   playParams?: PlayParams;
   /** Hostname of the document that produced this payload, set by assets/musicKitHook.js. */
   sourceHost?: string;
+}
+
+const MAX_DBUS_INT32 = 2_147_483_647;
+const MAX_SAFE_DURATION_MS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000);
+type FieldValidator = (value: unknown) => boolean;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isString(value: unknown): boolean {
+  return typeof value === 'string';
+}
+
+function hasValidFields(value: Record<string, unknown>, validators: Record<string, FieldValidator>): boolean {
+  return Object.keys(value).every(field => Object.hasOwn(validators, field)) &&
+    Object.entries(validators).every(([field, validate]) => value[field] === undefined || validate(value[field]));
+}
+
+function isNonNegativeSafeInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
+function isAllowedArtworkUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' &&
+      (parsed.hostname === 'mzstatic.com' || parsed.hostname.endsWith('.mzstatic.com'));
+  } catch {
+    return false;
+  }
+}
+
+function isPlayParams(value: unknown): value is PlayParams {
+  return isRecord(value) && hasValidFields(value, {
+    catalogId: isString,
+    globalId: isString,
+    kind: isString,
+    isLibrary: field => typeof field === 'boolean',
+  } satisfies Record<keyof PlayParams, FieldValidator>);
+}
+
+function isNowPlayingPayload(value: unknown): value is NowPlayingPayload {
+  return isRecord(value) && hasValidFields(value, {
+    name: isString,
+    artistName: isString,
+    albumName: isString,
+    artworkUrl: isAllowedArtworkUrl,
+    durationInMillis: field => isNonNegativeSafeInteger(field, MAX_SAFE_DURATION_MS),
+    url: field => typeof field === 'string' && isAllowedNavigationUrl(field),
+    genreNames: field => Array.isArray(field) && field.every(genre => typeof genre === 'string'),
+    trackId: isString,
+    trackNumber: field => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
+    discNumber: field => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
+    composerName: isString,
+    releaseDate: isString,
+    playParams: isPlayParams,
+    sourceHost: field => typeof field === 'string' && getServiceByHost(field) !== undefined,
+  } satisfies Record<keyof NowPlayingPayload, FieldValidator>);
 }
 
 /**
@@ -198,12 +258,10 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('playbackStateDidChange', payload);
   }
 
-  handleNowPlayingItemDidChange(payload: NowPlayingPayload | null): void {
-    if (payload != null) {
-      if (typeof payload !== 'object' || Array.isArray(payload)) {
-        playerLog.warn('nowPlayingItemDidChange: invalid payload, expected object or null');
-        return;
-      }
+  handleNowPlayingItemDidChange(payload: unknown): void {
+    if (payload !== null && !isNowPlayingPayload(payload)) {
+      playerLog.warn('nowPlayingItemDidChange: invalid metadata payload');
+      return;
     }
     playerLog.debug('nowPlayingItemDidChange:', payload);
     this.emit('nowPlayingItemDidChange', payload);
