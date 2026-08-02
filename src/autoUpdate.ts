@@ -62,13 +62,18 @@ export function quitAndInstall(): void {
   loadAutoUpdater().autoUpdater.quitAndInstall();
 }
 
+type AutoUpdaterModule = Pick<typeof import('electron-updater'), 'autoUpdater' | 'NsisUpdater'>;
+
 /**
  * Check for an update and download it. Call only when isAutoUpdateSupported()
  * is true. A finished download rebuilds the tray menu, raises a notification,
  * and offers a restart.
  */
-export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
-  const { autoUpdater, NsisUpdater } = loadAutoUpdater();
+export async function configureAutoUpdate(
+  { autoUpdater, NsisUpdater }: AutoUpdaterModule,
+  tray: Tray,
+  rebuildMenu: (tray: Tray) => void,
+): Promise<void> {
 
   // electron-updater's own logger is off; this module logs under its own scope,
   // which is what makes an updater load on deb, rpm or Nix visible in the log
@@ -127,4 +132,8 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   });
 
   await autoUpdater.checkForUpdates().catch(() => {});
+}
+
+export function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
+  return configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);
 }

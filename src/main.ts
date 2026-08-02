@@ -653,7 +653,9 @@ if (gotLock) {
       mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
     }
     mainLog.info('loading Apple Music...');
-    win.loadURL(buildAppleMusicURL(), { userAgent: UA });
+    win.loadURL(buildAppleMusicURL(), { userAgent: UA }).catch(err =>
+      mainLog.warn('initial navigation loadURL failed:', (err as Error).message)
+    );
 
     // Drain any itms target captured at launch. Routed after the initial home
     // load so the content-ready probe binds to its first did-navigate-in-page.

@@ -1,5 +1,5 @@
 // test/artwork.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable, Writable } from 'stream';
 
 // One factory per module, used by the vi.mock below and again by the vi.doMock
@@ -76,6 +76,10 @@ function mockSuccessfulFetch() {
 
 describe('downloadArtwork', () => {
   let downloadArtwork: typeof import('../src/artwork').downloadArtwork;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(async () => {
     vi.resetModules();
@@ -172,11 +176,19 @@ describe('downloadArtwork', () => {
   it('resolves null on abort timeout', async () => {
     const url = 'https://example.com/slow.jpg';
 
-    // Simulate an abort error (what AbortController produces)
-    vi.mocked(net.fetch).mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
+    vi.useFakeTimers();
+    vi.mocked(net.fetch).mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+      });
+    }));
 
-    const result = await downloadArtwork(url);
-    expect(result).toBeNull();
+    const result = downloadArtwork(url);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(fsPromises.unlink).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBeNull();
     expect(fsPromises.unlink).toHaveBeenCalled();
   });
 
