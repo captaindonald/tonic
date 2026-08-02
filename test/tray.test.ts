@@ -136,7 +136,7 @@ afterEach(restorePlatform);
  * Puts every mock and every piece of tray module state the menu reads back to
  * the state this file builds a menu in, and drops the recorded calls on the
  * `nativeImage` factories that several tests assert were never called.
- * vitest.config.ts turns on neither `clearMocks` nor `mockReset`, so without a
+ * vitest.config.mts turns on neither `clearMocks` nor `mockReset`, so without a
  * reset of its own a block that moves one of these values, or that paints an
  * icon, leaves that behind for every block that follows, and the order of the
  * describes becomes part of the contract.

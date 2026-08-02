@@ -205,7 +205,6 @@ Current dependency roles:
 - electron-updater - AppImage and NSIS update checks and installs
 - dbus-next - Linux MPRIS integration
 - Discord RPC - optional Discord Rich Presence
-- shx and npm scripts - cross-platform build helpers
 
 ### Logging
 
