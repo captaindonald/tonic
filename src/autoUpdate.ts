@@ -134,6 +134,11 @@ export async function configureAutoUpdate(
   await autoUpdater.checkForUpdates().catch(() => {});
 }
 
-export function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
-  return configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);
+export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
+  try {
+    await configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    autoUpdateLog.error('auto-update initialisation failed:', message);
+  }
 }

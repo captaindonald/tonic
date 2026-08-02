@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Module from 'node:module';
 import { restorePlatform, setPlatform } from './mocks/platform';
 
 const updater = vi.hoisted(() => {
@@ -41,8 +42,13 @@ vi.mock('../src/update', () => ({
 
 import { app, dialog, Tray } from 'electron';
 import { getAutoUpdateEnabled } from '../src/config';
-import { configureAutoUpdate, isAutoUpdateSupported } from '../src/autoUpdate';
+import { configureAutoUpdate, initAutoUpdate, isAutoUpdateSupported } from '../src/autoUpdate';
 import { setUpdateReady, showUpdateNotification } from '../src/update';
+
+const moduleApi = Module as unknown as {
+  _load: (request: string, parent: unknown, isMain: boolean) => unknown;
+};
+const realLoad = moduleApi._load;
 
 function configure(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
   const updaterModule = {
@@ -71,6 +77,7 @@ describe('auto-update', () => {
   });
 
   afterEach(() => {
+    moduleApi._load = realLoad;
     restorePlatform();
     vi.unstubAllEnvs();
   });
@@ -152,5 +159,14 @@ describe('auto-update', () => {
     updater.autoUpdater.checkForUpdates.mockRejectedValue(new Error('offline'));
 
     await expect(configure(new Tray('icon'), vi.fn())).resolves.toBeUndefined();
+  });
+
+  it('contains a failed updater load', async () => {
+    moduleApi._load = (request, parent, isMain) => {
+      if (request === 'electron-updater') throw new Error('cannot find module');
+      return Reflect.apply(realLoad, Module, [request, parent, isMain]);
+    };
+
+    await expect(initAutoUpdate(new Tray('icon'), vi.fn())).resolves.toBeUndefined();
   });
 });
