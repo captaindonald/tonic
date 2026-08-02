@@ -227,8 +227,8 @@ jobs:
       - name: Compile TypeScript
         run: npm run build
         env:
-          SIDRA_LASTFM_API_KEY: ${{ secrets.SIDRA_LASTFM_API_KEY }}
-          SIDRA_LASTFM_API_SECRET: ${{ secrets.SIDRA_LASTFM_API_SECRET }}
+          SIDRA_LASTFM_API_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_KEY || '' }}
+          SIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_SECRET || '' }}
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
         env:

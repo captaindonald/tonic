@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 interface ReleaseCredentials {
@@ -17,6 +18,7 @@ const afterPack = require('../build/afterPack.cjs').default as (context: {
   appOutDir: string;
   electronPlatformName: string;
 }) => Promise<void>;
+const builderWorkflow = readFileSync('.github/workflows/builder.yml', 'utf8');
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -88,4 +90,13 @@ describe('release build scripts', () => {
 
 it('pins castlabs-evs to an exact release', () => {
   expect(EVS_PACKAGE).toMatch(/^castlabs-evs==\d+\.\d+\.\d+$/);
+});
+
+it('restricts Last.fm credentials to tag builds', () => {
+  expect(builderWorkflow).toContain(
+    "SIDRA_LASTFM_API_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_KEY || '' }}",
+  );
+  expect(builderWorkflow).toContain(
+    "SIDRA_LASTFM_API_SECRET: ${{ startsWith(github.ref, 'refs/tags/') && secrets.SIDRA_LASTFM_API_SECRET || '' }}",
+  );
 });
