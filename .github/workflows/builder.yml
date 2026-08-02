@@ -157,6 +157,9 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     needs: [lint-code, lint-actions, test-config, test-code]
+    # EVS secrets exist only in release-evs, whose deployment policy admits
+    # version tags. A pull request uses ci, which carries no EVS secrets.
+    environment: ${{ startsWith(github.ref, 'refs/tags/') && 'release-evs' || 'ci' }}
     # Every part of this is needed. Actions propagates the skipped version-gate
     # down the needs graph, and the four jobs above override it with their own
     # always(), so without always() here the skip reaches this job through them.
@@ -229,16 +232,13 @@ jobs:
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
         env:
-          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
-          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          EVS_ACCOUNT_NAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_ACCOUNT_NAME || '' }}
+          EVS_PASSWD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_PASSWD || '' }}
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
         if: matrix.os == 'linux'
         run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
-        env:
-          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
-          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
