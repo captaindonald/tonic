@@ -71,16 +71,9 @@ const POSITION_TOLERANCE_MS = 2000;
 // again rather than trusting this one.
 const MAX_PENDING_SCROBBLES = 50;
 
-// How long a drain request is given before it is aborted. A drain marks its
-// generation while it is out and clears the marker only once the request
-// settles, so a connection that hangs rather than failing would hold that
-// marker for the life of the session and every later drain would return at the
-// guard with the queue never going out again. The abort ends the request, which
-// fails it the way a dropped connection does: the batch stays queued and the
-// marker clears. It is not a retry - nothing is re-issued and nothing is
-// re-armed, so the batch still waits for a drain the user's own playback
-// triggers. Only the drain is bounded; every other request settles on its own.
-const DRAIN_TIMEOUT_MS = 30_000;
+// A transport that never settles must not lock authentication, lose a live
+// scrobble or hold a queued-scrobble drain open for the life of the session.
+const REQUEST_TIMEOUT_MS = 30_000;
 
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
 // user approves the token in their browser, then give up.
@@ -245,36 +238,46 @@ export function scrobbleThresholdMs(durationMs: number): number | null {
   return Math.min(durationMs / 2, SCROBBLE_CAP_MS);
 }
 
-async function apiCall(params: Record<string, string>, post: boolean, signal?: AbortSignal): Promise<LastfmResponse> {
+async function apiCall(
+  params: Record<string, string>,
+  post: boolean,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<LastfmResponse> {
   const signed = { ...params, api_sig: signParams(params, API_SECRET) };
   const query = new URLSearchParams({ ...signed, format: 'json' });
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = post
-    ? await net.fetch(API_ROOT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: query.toString(),
-        signal,
-      })
-    : await net.fetch(`${API_ROOT}?${query.toString()}`, { signal });
-
-  // The body is read before the status because Last.fm reports its own errors
-  // in the body and sends several of them with a non-2xx status: checking the
-  // status first would collapse error 9 into a generic failure and leave a
-  // revoked session connected. The status only speaks up when the body carries
-  // no code, which is what an outage or a proxy error looks like.
-  const body = await response.text();
-  let json: LastfmResponse;
   try {
-    json = JSON.parse(body) as LastfmResponse;
-  } catch {
-    throw new Error(`Last.fm HTTP ${response.status}: response was not JSON`);
+    const response = post
+      ? await net.fetch(API_ROOT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: query.toString(),
+          signal: controller.signal,
+        })
+      : await net.fetch(`${API_ROOT}?${query.toString()}`, { signal: controller.signal });
+
+    // The body is read before the status because Last.fm reports its own errors
+    // in the body and sends several of them with a non-2xx status: checking the
+    // status first would collapse error 9 into a generic failure and leave a
+    // revoked session connected. The status only speaks up when the body carries
+    // no code, which is what an outage or a proxy error looks like.
+    const body = await response.text();
+    let json: LastfmResponse;
+    try {
+      json = JSON.parse(body) as LastfmResponse;
+    } catch {
+      throw new Error(`Last.fm HTTP ${response.status}: response was not JSON`);
+    }
+    if (json.error) {
+      throw new LastfmApiError(json.error, `Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
+    }
+    if (!response.ok) throw new Error(`Last.fm HTTP ${response.status}`);
+    return json;
+  } finally {
+    clearTimeout(abortTimer);
   }
-  if (json.error) {
-    throw new LastfmApiError(json.error, `Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
-  }
-  if (!response.ok) throw new Error(`Last.fm HTTP ${response.status}`);
-  return json;
 }
 
 // --- Current track state ---
@@ -589,14 +592,10 @@ function flushPendingScrobbles(sessionKey: string): void {
   trimmedWhileDraining = 0;
 
   const params = buildBatchParams(batch, sessionKey);
-  const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), DRAIN_TIMEOUT_MS);
-
-  apiCall(params, true, controller.signal)
+  apiCall(params, true)
     .then((res) => onDrainSettled(res, batch, generation))
     .catch((err: Error) => onDrainFailed(err, batch, generation))
     .finally(() => {
-      clearTimeout(abortTimer);
       // Only this drain's own marker is cleared. A stale drain settling late
       // would otherwise release the live drain's place and let a second one
       // start beside it.
@@ -881,7 +880,14 @@ export function startAuth(onComplete?: () => void): void {
  * connect an account behind the user's back.
  */
 function pollForSession(token: string, startedAt: number, generation: number, onComplete?: () => void): void {
-  apiCall({ method: 'auth.getSession', api_key: API_KEY, token }, false)
+  if (generation !== authGeneration) return;
+  const remainingMs = AUTH_POLL_TIMEOUT_MS - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    failAuth('authorisation timed out', onComplete);
+    return;
+  }
+
+  apiCall({ method: 'auth.getSession', api_key: API_KEY, token }, false, Math.min(REQUEST_TIMEOUT_MS, remainingMs))
     .then((res) => {
       if (generation !== authGeneration) return;
       const key = res.session?.key;
@@ -905,7 +911,8 @@ function pollForSession(token: string, startedAt: number, generation: number, on
         failAuth('authorisation timed out', onComplete);
         return;
       }
-      authPollTimer = setTimeout(() => pollForSession(token, startedAt, generation, onComplete), AUTH_POLL_INTERVAL_MS);
+      const delay = Math.min(AUTH_POLL_INTERVAL_MS, AUTH_POLL_TIMEOUT_MS - (Date.now() - startedAt));
+      authPollTimer = setTimeout(() => pollForSession(token, startedAt, generation, onComplete), delay);
     });
 }
 

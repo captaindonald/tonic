@@ -380,6 +380,23 @@ describe('now playing request', () => {
 
     expect(params.get('duration')).toBe('0');
   });
+
+  it('aborts a now-playing request that does not settle', async () => {
+    const { player } = await startIntegration();
+    let signal: AbortSignal | null | undefined;
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      signal = init?.signal;
+      return hangUntilAbort(signal);
+    });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    expect(signal?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(signal?.aborted).toBe(true);
+  });
 });
 
 /** A Last.fm API refusal: HTTP 200 with an error code in the body. */
@@ -398,6 +415,12 @@ function refuseScrobbles(code: number): void {
 /** Settles the request promises the timers have started. */
 async function flush(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
+}
+
+function hangUntilAbort(signal: AbortSignal | null | undefined): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new Error('The operation was aborted.')));
+  });
 }
 
 /** Plays `TRACK` past its scrobble threshold. */
@@ -732,6 +755,23 @@ describe('queued scrobbles', () => {
       track: 'Blue Monday',
       timestamp: Number(START_UNIX),
     });
+  });
+
+  it('queues a live scrobble when its request times out', async () => {
+    const { player } = await startIntegration();
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
+      return method === 'track.scrobble' ? hangUntilAbort(init?.signal) : Promise.resolve(new Response('{}'));
+    });
+
+    playPastThreshold(player);
+    await flush();
+    expect(queue.pending).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Blue Monday');
   });
 
   it('drops a play the API refused', async () => {
@@ -1430,6 +1470,46 @@ describe('authentication', () => {
     expect(opened.hash).toBe('');
 
     lastfm.disconnect();
+  });
+
+  it('releases authentication when the token request times out', async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    let attempt = 0;
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      attempt += 1;
+      return attempt === 1 ? hangUntilAbort(init?.signal) : Promise.resolve(apiError(10));
+    });
+
+    lastfm.startAuth();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(session.enabled).toBe(false);
+
+    lastfm.startAuth();
+    await flush();
+
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends authentication at the two-minute deadline when session requests hang', async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    vi.mocked(net.fetch).mockImplementation((input, init) =>
+      String(input).includes('auth.getToken')
+        ? Promise.resolve(new Response(JSON.stringify({ token: 'auth-token' })))
+        : hangUntilAbort(init?.signal),
+    );
+
+    lastfm.startAuth();
+    await flush();
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    expect(session.enabled).toBe(false);
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(5);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(5);
   });
 
   it('stops polling for a session when the app quits', async () => {
