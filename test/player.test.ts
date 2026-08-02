@@ -249,7 +249,7 @@ describe('Player handle* payload validation', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  const BAD_METADATA: ReadonlyArray<readonly [string, unknown]> = [
+  const BAD_METADATA: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> = [
     ['non-string name', { name: 123 }],
     ['non-string artist', { artistName: false }],
     ['non-string album', { albumName: {} }],
@@ -281,17 +281,29 @@ describe('Player handle* payload validation', () => {
     ['malformed artwork URL', { artworkUrl: 'not a URL' }],
     ['non-string source host', { sourceHost: 123 }],
     ['unknown source host', { sourceHost: 'attacker.test' }],
-    ['unknown field', { name: 'Track', extra: true }],
   ];
 
-  it.each(BAD_METADATA)('handleNowPlayingItemDidChange ignores %s', (_description, payload) => {
+  it.each(BAD_METADATA)('handleNowPlayingItemDidChange drops %s', (_description, payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('nowPlayingItemDidChange', listener);
+    const validField = Object.hasOwn(payload, 'name')
+      ? { artistName: 'Artist' }
+      : { name: 'Track' };
+
+    player.handleNowPlayingItemDidChange({ ...validField, ...payload });
+
+    expect(listener).toHaveBeenCalledWith(validField);
+  });
+
+  it('drops unknown metadata fields and emits known fields', () => {
     const player = new Player();
     const listener = vi.fn();
     player.on('nowPlayingItemDidChange', listener);
 
-    player.handleNowPlayingItemDidChange(payload);
+    player.handleNowPlayingItemDidChange({ name: 'Track', extra: true });
 
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledWith({ name: 'Track' });
   });
 });
 

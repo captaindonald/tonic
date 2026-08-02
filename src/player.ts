@@ -72,23 +72,33 @@ function isPlayParams(value: unknown): value is PlayParams {
   } satisfies Record<keyof PlayParams, FieldValidator>);
 }
 
-function isNowPlayingPayload(value: unknown): value is NowPlayingPayload {
-  return isRecord(value) && hasValidFields(value, {
-    name: isString,
-    artistName: isString,
-    albumName: isString,
-    artworkUrl: isAllowedArtworkUrl,
-    durationInMillis: field => isNonNegativeSafeInteger(field, MAX_SAFE_DURATION_MS),
-    url: field => typeof field === 'string' && isAllowedNavigationUrl(field),
-    genreNames: field => Array.isArray(field) && field.every(genre => typeof genre === 'string'),
-    trackId: isString,
-    trackNumber: field => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
-    discNumber: field => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
-    composerName: isString,
-    releaseDate: isString,
-    playParams: isPlayParams,
-    sourceHost: field => typeof field === 'string' && getServiceByHost(field) !== undefined,
-  } satisfies Record<keyof NowPlayingPayload, FieldValidator>);
+const NOW_PLAYING_FIELD_VALIDATORS = {
+  name: isString,
+  artistName: isString,
+  albumName: isString,
+  artworkUrl: isAllowedArtworkUrl,
+  durationInMillis: (field: unknown) => isNonNegativeSafeInteger(field, MAX_SAFE_DURATION_MS),
+  url: (field: unknown) => typeof field === 'string' && isAllowedNavigationUrl(field),
+  genreNames: (field: unknown) => Array.isArray(field) && field.every(genre => typeof genre === 'string'),
+  trackId: isString,
+  trackNumber: (field: unknown) => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
+  discNumber: (field: unknown) => isNonNegativeSafeInteger(field, MAX_DBUS_INT32),
+  composerName: isString,
+  releaseDate: isString,
+  playParams: isPlayParams,
+  sourceHost: (field: unknown) => typeof field === 'string' && getServiceByHost(field) !== undefined,
+} satisfies Record<keyof NowPlayingPayload, FieldValidator>;
+
+function sanitiseNowPlayingPayload(value: unknown): NowPlayingPayload | null {
+  if (!isRecord(value)) return null;
+  const validators: Record<string, FieldValidator> = NOW_PLAYING_FIELD_VALIDATORS;
+  const fields = Object.entries(value).filter(([field, fieldValue]) => {
+    const validate = validators[field];
+    if (validate?.(fieldValue)) return true;
+    playerLog.warn('nowPlayingItemDidChange: dropping invalid metadata field', field);
+    return false;
+  });
+  return Object.fromEntries(fields) as NowPlayingPayload;
 }
 
 /**
@@ -216,7 +226,7 @@ export interface PlaybackSnapshot {
  * Main-process hub for the renderer's MusicKit events. Each handle* method is
  * wired to one IPC channel in initPlayerIPC() (src/main.ts), validates the
  * payload the untrusted renderer sent, then re-emits it to the integrations.
- * An invalid payload is logged and dropped rather than forwarded.
+ * Invalid metadata fields are logged and dropped rather than forwarded.
  */
 export class Player extends TypedEmitter<PlayerEvents> {
   private lastTimeLogAt = 0;
@@ -259,12 +269,18 @@ export class Player extends TypedEmitter<PlayerEvents> {
   }
 
   handleNowPlayingItemDidChange(payload: unknown): void {
-    if (payload !== null && !isNowPlayingPayload(payload)) {
+    if (payload === null) {
+      playerLog.debug('nowPlayingItemDidChange:', payload);
+      this.emit('nowPlayingItemDidChange', payload);
+      return;
+    }
+    const sanitised = sanitiseNowPlayingPayload(payload);
+    if (sanitised === null) {
       playerLog.warn('nowPlayingItemDidChange: invalid metadata payload');
       return;
     }
-    playerLog.debug('nowPlayingItemDidChange:', payload);
-    this.emit('nowPlayingItemDidChange', payload);
+    playerLog.debug('nowPlayingItemDidChange:', sanitised);
+    this.emit('nowPlayingItemDidChange', sanitised);
   }
 
   handlePlaybackTimeDidChange(payload: number): void {
