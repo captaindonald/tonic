@@ -133,6 +133,12 @@ afterEach(() => {
 });
 
 describe('MPRIS OpenUri', () => {
+  it('advertises HTTPS URI support', () => {
+    initPlayerInterface();
+    const rootIface = busStub.export.mock.calls[0][1] as { SupportedUriSchemes: string[] };
+    expect(rootIface.SupportedUriSchemes).toEqual(['https']);
+  });
+
   it('loads a music.apple.com URI', () => {
     initPlayerInterface().OpenUri('https://music.apple.com/gb/album/foo');
     expect(win.loadURL).toHaveBeenCalledWith('https://music.apple.com/gb/album/foo');

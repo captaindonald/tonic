@@ -66,7 +66,7 @@ class MediaPlayer2 extends Interface {
   }
 
   get SupportedUriSchemes(): string[] {
-    return [];
+    return ['https'];
   }
 
   Raise(): void {
