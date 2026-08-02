@@ -9,10 +9,11 @@
  * refuses DRM licences on macOS.
  * Linux does not enforce VMP so this hook is a no-op there.
  *
- * Absent EVS credentials the signing is skipped rather than failed, so a
- * contributor without an EVS account can still produce an unsigned build.
+ * Local builds skip signing when both EVS credentials are absent. Tag builds
+ * require both credentials, so an unsigned release cannot be published.
  *
- * Setup: uvx --from castlabs-evs evs-account signup
+ * Setup: read EVS_PACKAGE from build/evs.cjs, then run
+ *        uvx --from <package> evs-account signup
  * Docs:  https://github.com/castlabs/electron-releases/wiki/EVS
  */
 exports.default = async function afterPack(context) {
@@ -22,7 +23,16 @@ exports.default = async function afterPack(context) {
     return;
   }
 
-  if (!process.env.EVS_ACCOUNT_NAME || !process.env.EVS_PASSWD) {
+  const { EVS_PACKAGE } = require('./evs.cjs');
+  const { isOfficialBuild, validateCredentialPair } = require('../scripts/release-credentials.cjs');
+  const credentialsAvailable = validateCredentialPair(
+    process.env,
+    'EVS_ACCOUNT_NAME',
+    'EVS_PASSWD',
+    isOfficialBuild(),
+  );
+
+  if (!credentialsAvailable) {
     console.log('EVS: Skipping VMP signing (credentials not available).');
     return;
   }
@@ -31,13 +41,13 @@ exports.default = async function afterPack(context) {
 
   console.log('EVS: Signing package with production VMP keys...');
   try {
-    execFileSync('uvx', ['--from', 'castlabs-evs', 'evs-vmp', 'sign-pkg', appOutDir], {
+    execFileSync('uvx', ['--from', EVS_PACKAGE, 'evs-vmp', 'sign-pkg', appOutDir], {
       stdio: 'inherit',
     });
     console.log('EVS: VMP signing complete.');
   } catch (err) {
     console.error('EVS: VMP signing failed. Ensure castlabs_evs is installed:');
-    console.error('  uvx --from castlabs-evs evs-account signup');
+    console.error(`  uvx --from ${EVS_PACKAGE} evs-account signup`);
     throw err;
   }
 };

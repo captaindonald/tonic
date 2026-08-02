@@ -54,7 +54,8 @@ _sign-evs:
     if [ ! -d "node_modules/electron/dist/Electron.app" ]; then
         exit 0
     fi
-    uvx --from castlabs-evs evs-vmp sign-pkg node_modules/electron/dist
+    evs_package=$(node -p "require('./build/evs.cjs').EVS_PACKAGE")
+    uvx --from "$evs_package" evs-vmp sign-pkg node_modules/electron/dist
 
 [linux]
 [private]

@@ -256,12 +256,19 @@ jobs:
     steps:
       - name: Check release does not already exist
         run: |
-          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+          set -euo pipefail
+          release_tags=$(gh release list --repo "$GH_REPO" --limit 10000 --json tagName --jq '.[].tagName') || {
+            echo "Error: failed to query releases for $GH_REPO" >&2
+            exit 1
+          }
+          if printf '%s\n' "$release_tags" | grep -Fxq "$RELEASE_TAG"; then
             echo "Error: release $RELEASE_TAG already exists" >&2
             exit 1
           fi
+          echo "Release $RELEASE_TAG does not exist in $GH_REPO"
         env:
           RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Download all build artefacts
         uses: actions/download-artifact@v8
