@@ -13,7 +13,14 @@ vi.mock('../src/config', () => ({
   getMusicService: vi.fn(() => state.service),
 }));
 
-import { PlaybackState, Player, getShareUrl, isTerminalPlaybackState, type PlayerEvents } from '../src/player';
+import {
+  PlaybackState,
+  Player,
+  getShareUrl,
+  isTerminalPlaybackState,
+  type NowPlayingPayload,
+  type PlayerEvents,
+} from '../src/player';
 
 /** The shipped hook, read so the command contract is checked against real source. */
 const HOOK_SOURCE = fs.readFileSync(
@@ -351,6 +358,31 @@ describe('SidraHook contract', () => {
 
     const commands = [...block![1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
     expect(commands).toEqual(Object.keys(hookMethods).sort());
+  });
+
+  it('now-playing fields in musicKitHook.js match NowPlayingPayload', () => {
+    const payloadFields = {
+      name: true,
+      artistName: true,
+      albumName: true,
+      artworkUrl: true,
+      durationInMillis: true,
+      url: true,
+      genreNames: true,
+      trackId: true,
+      trackNumber: true,
+      discNumber: true,
+      composerName: true,
+      releaseDate: true,
+      playParams: true,
+      sourceHost: true,
+    } satisfies Record<keyof NowPlayingPayload, true>;
+
+    const block = /sendToMain\('nowPlayingItemDidChange', \{\n([\s\S]*?)^ {8}\}\);/m.exec(HOOK_SOURCE);
+    expect(block, 'now-playing payload not found in assets/musicKitHook.js').not.toBeNull();
+
+    const fields = [...block![1].matchAll(/^ {10}([A-Za-z]\w*):/gm)].map((match) => match[1]).sort();
+    expect(fields).toEqual(Object.keys(payloadFields).sort());
   });
 });
 
