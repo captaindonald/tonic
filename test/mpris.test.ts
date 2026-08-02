@@ -423,6 +423,7 @@ describe('MPRIS position', () => {
   it('emits Seeked for a jump and not for ordinary ticks', () => {
     const iface = initPlayerInterface();
     const seeked = vi.spyOn(iface, 'Seeked');
+    player.emitPlaybackState(PlaybackState.Playing);
 
     for (let second = 1; second <= 5; second += 1) {
       vi.advanceTimersByTime(1000);
@@ -434,6 +435,38 @@ describe('MPRIS position', () => {
     player.setPositionUs(60_000_000);
     expect(seeked).toHaveBeenCalledTimes(1);
     expect(seeked).toHaveBeenCalledWith(60_000_000);
+  });
+
+  it('does not count paused wall time after playback resumes', () => {
+    const iface = initPlayerInterface();
+    const seeked = vi.spyOn(iface, 'Seeked');
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    vi.advanceTimersByTime(1000);
+    player.setPositionUs(1_000_000);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    vi.advanceTimersByTime(60_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    vi.advanceTimersByTime(1000);
+    player.setPositionUs(2_000_000);
+
+    expect(seeked).not.toHaveBeenCalled();
+  });
+
+  it('does not extrapolate position while paused', () => {
+    const iface = initPlayerInterface();
+    const seeked = vi.spyOn(iface, 'Seeked');
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    vi.advanceTimersByTime(1000);
+    player.setPositionUs(1_000_000);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    vi.advanceTimersByTime(60_000);
+    player.setPositionUs(1_000_000);
+
+    expect(seeked).not.toHaveBeenCalled();
   });
 
   // Both the Seeked argument and the Position property are int64 fields, and

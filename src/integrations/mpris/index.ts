@@ -296,6 +296,9 @@ class MediaPlayer2Player extends Interface {
       status = 'Stopped';
     }
 
+    if (status !== this._playbackStatus) {
+      this._lastPositionTimestamp = Date.now();
+    }
     this._playbackStatus = status;
     this._schedulePropertyEmission({ PlaybackStatus: status });
   }
@@ -404,7 +407,7 @@ class MediaPlayer2Player extends Interface {
     // position read the integer.
     const newPositionUs = Math.trunc(payload);
     const now = Date.now();
-    const elapsedMs = now - this._lastPositionTimestamp;
+    const elapsedMs = this._playbackStatus === 'Playing' ? now - this._lastPositionTimestamp : 0;
     const expectedPositionUs = this._lastPositionUs + elapsedMs * MS_TO_US;
 
     if (Math.abs(newPositionUs - expectedPositionUs) > this._seekThresholdUs) {
