@@ -12,7 +12,6 @@ reviews:
   ignore:
     files:
       - "dist/**"
-      - "build/**"
     pr_titles:
       - "wip:*"
     pr_labels:
