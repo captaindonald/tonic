@@ -61,6 +61,7 @@
                 librsvg # rsvg-convert for tray menu icon generation
                 optipng # PNG optimisation for tray menu icons
                 nodejs # 24.x Active LTS, matches Electron 40's bundled Node
+                playwright-mcp
               ]
               ++ lib.optionals stdenv.isDarwin [
                 uv # required for EVS VMP signing via uvx

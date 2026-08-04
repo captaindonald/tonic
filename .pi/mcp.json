@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "playwright-mcp",
+      "args": [],
+      "enabled": true,
+      "directTools": false
+    }
+  },
+  "settings": {
+    "directTools": false
+  }
+}
