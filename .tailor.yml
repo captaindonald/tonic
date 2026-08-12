@@ -16,15 +16,24 @@ repository:
   merge_commit_message: PR_TITLE
   delete_branch_on_merge: true
   allow_update_branch: false
-  allow_auto_merge: false
+  allow_auto_merge: true
   web_commit_signoff_required: false
   default_workflow_permissions: write
   can_approve_pull_request_reviews: true
   topics:
     - applemusic
+    - applemusic-classical
     - apple-music
+    - apple-music-classical
+    - apple-music-electron
     - apple-music-player
+    - apple-music-ui
     - electron
+    - electron-music
+    - lastfm
+    - last-fm
+    - discord-rich-presence
+    - discord-richpresence
 
 labels:
   - name: bug
