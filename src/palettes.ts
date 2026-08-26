@@ -39,8 +39,12 @@ export type BundledThemeName =
   | 'solarized'
   | 'tokyo-night';
 
-/** Active theme. 'apple-music' means no override CSS is injected at all. */
-export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
+/**
+ * Active theme. 'apple-music' means no override CSS is injected at all.
+ * 'custom' is a raw custom.css; 'custom-theme' is a structured custom-theme.json
+ * palette rendered through the same template as the bundled themes.
+ */
+export type ThemeName = 'apple-music' | BundledThemeName | 'custom' | 'custom-theme';
 
 // Dracula defines no official light scheme; the dark palette serves both
 // colour schemes, matching how Dracula presents everywhere else.
@@ -314,6 +318,7 @@ export function bundledTheme(name: BundledThemeName): BundledTheme | undefined {
 export function isThemeName(value: string): value is ThemeName {
   return value === 'apple-music'
     || value === 'custom'
+    || value === 'custom-theme'
     || bundledThemesByName.has(value as BundledThemeName);
 }
 
@@ -321,5 +326,6 @@ export function isThemeName(value: string): value is ThemeName {
 export function themeLabel(name: ThemeName): string {
   if (name === 'apple-music') return 'Apple Music';
   if (name === 'custom') return 'Custom';
+  if (name === 'custom-theme') return 'Custom Theme';
   return bundledThemesByName.get(name)?.label ?? name;
 }

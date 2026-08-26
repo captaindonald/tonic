@@ -24,11 +24,14 @@ import { getMusicService, getTheme } from '../src/config';
 import {
   applyTheme,
   customCssPath,
+  customThemePath,
   getThemeCss,
   hasCustomCss,
+  hasCustomTheme,
   initThemeCSS,
   injectThemeCss,
   invalidateCustomCssCache,
+  invalidateCustomThemeCache,
   notifyDocumentReplacing,
   resolveTheme,
   setRebuildTrayCallback,
@@ -43,9 +46,10 @@ describe('theme helpers', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('');
     vi.mocked(fs.readFileSync).mockClear();
     vi.mocked(fs.watch).mockReset();
-    // custom.css contents are cached for the life of the process, so each test
-    // starts from a cold cache.
+    // custom.css and custom-theme.json contents are cached for the life of the
+    // process, so each test starts from a cold cache.
     invalidateCustomCssCache();
+    invalidateCustomThemeCache();
   });
 
   afterEach(() => {
@@ -119,7 +123,7 @@ describe('theme helpers', () => {
   }
 
   // A fresh copy of src/theme.ts wired to its own harness, for the tests that
-  // reach disableCustomCssCache(). The copy is what keeps the disabled flag,
+  // reach disableCustomCaches(). The copy is what keeps the disabled flag,
   // which nothing switches back on, out of every other test.
   // failToStart makes fs.watch throw, which is the other route to that call.
   async function loadThemeWithWatcher(options: { failToStart?: boolean } = {}) {
@@ -596,6 +600,76 @@ describe('theme helpers', () => {
     expect(css).toContain('@media (prefers-color-scheme: dark)');
     expect(css).toContain('@media (prefers-color-scheme: light)');
     expect(css).toContain('--pageBG: #1e1e2e !important;');
+  });
+
+  describe('custom-theme.json', () => {
+    const VALID_THEME = JSON.stringify({
+      dark: {
+        base: '#101020', mantle: '#181825', crust: '#11111b',
+        surface0: '#313244', surface1: '#45475a', surface2: '#585b70',
+        overlay: '#6c7086', text: '#cdd6f4', subtext1: '#bac2de',
+        subtext0: '#a6adc8', accent: '#f38ba8', accentHover: '#eba0ac',
+      },
+    });
+
+    it('builds the custom-theme.json path from userData', () => {
+      expect(customThemePath()).toBe(path.join(app.getPath('userData'), 'custom-theme.json'));
+    });
+
+    it('renders a valid custom-theme.json through the template', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(VALID_THEME);
+      const css = getThemeCss('custom-theme');
+      expect(css).toContain('@media (prefers-color-scheme: dark)');
+      expect(css).toContain('--pageBG: #101020 !important;');
+    });
+
+    it('returns null for a custom-theme.json that does not parse', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue('{ not json');
+      expect(getThemeCss('custom-theme')).toBeNull();
+      expect(hasCustomTheme()).toBe(false);
+    });
+
+    it('returns null when custom-theme.json is missing', () => {
+      throwEnoent();
+      expect(getThemeCss('custom-theme')).toBeNull();
+    });
+
+    it('resolves to custom-theme when the file is valid', () => {
+      vi.mocked(getTheme).mockReturnValue('custom-theme');
+      vi.mocked(fs.readFileSync).mockReturnValue(VALID_THEME);
+      expect(hasCustomTheme()).toBe(true);
+      expect(resolveTheme()).toBe('custom-theme');
+    });
+
+    it('falls back to apple-music when custom-theme.json is invalid', () => {
+      vi.mocked(getTheme).mockReturnValue('custom-theme');
+      vi.mocked(fs.readFileSync).mockReturnValue('nonsense');
+      expect(resolveTheme()).toBe('apple-music');
+    });
+
+    it('re-reads custom-theme.json when the watcher names it', () => {
+      const harness = watcherHarness();
+      vi.mocked(fs.readFileSync).mockReturnValue(VALID_THEME);
+      harness.start();
+      expect(getThemeCss('custom-theme')).toContain('--pageBG: #101020 !important;');
+
+      const changed = JSON.parse(VALID_THEME) as { dark: Record<string, string> };
+      changed.dark.base = '#202040';
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(changed));
+      harness.fire('change', 'custom-theme.json');
+      expect(getThemeCss('custom-theme')).toContain('--pageBG: #202040 !important;');
+    });
+
+    it('leaves the custom.css cache alone when only custom-theme.json changes', () => {
+      const harness = watcherHarness();
+      vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+      harness.start();
+      expect(getThemeCss('custom')).toBe('body { color: red; }');
+
+      harness.fire('change', 'custom-theme.json');
+      expect(getThemeCss('custom')).toBe('body { color: red; }');
+      expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('removes injected css when custom.css disappears for stored custom theme', async () => {

@@ -4,6 +4,7 @@ import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import log from 'electron-log/main';
 import { bundledTheme, isThemeName, type BundledThemeName, type ThemeName } from './palettes';
 import { buildThemeCss } from './themeTemplate';
+import { parseCustomTheme } from './customTheme';
 import { getTheme } from './config';
 
 export type { ThemeName };
@@ -12,6 +13,7 @@ const themeLog = log.scope('theme');
 
 const THEME_RELOAD_DEBOUNCE_MS = 150;
 const customCssFilename = 'custom.css';
+const customThemeFilename = 'custom-theme.json';
 const bundledCssCache = new Map<BundledThemeName, string>();
 
 // custom.css is read on every tray rebuild, through both hasCustomCss() and
@@ -22,6 +24,14 @@ const bundledCssCache = new Map<BundledThemeName, string>();
 let customCssCache: string | null = null;
 let customCssCached = false;
 let customCssCacheEnabled = true;
+
+// custom-theme.json is cached the same way: reading it also parses the JSON and
+// renders the stylesheet, so it is the more expensive of the two to repeat. The
+// same watcher clears it, and disableCustomCaches() turns it off with the CSS
+// cache when that watcher dies.
+let customThemeCache: string | null = null;
+let customThemeCached = false;
+let customThemeCacheEnabled = true;
 
 // The insertCSS key of the sheet currently on the page, which is what a later
 // removeInsertedCSS needs. Null means no sheet is tracked.
@@ -126,19 +136,31 @@ export function customCssPath(): string {
   return path.join(app.getPath('userData'), customCssFilename);
 }
 
+/** Where a user drops a structured theme: custom-theme.json in the userData directory. */
+export function customThemePath(): string {
+  return path.join(app.getPath('userData'), customThemeFilename);
+}
+
 /** True when custom.css is readable and non-blank; existing is not enough. */
 export function hasCustomCss(): boolean {
   return getThemeCss('custom') !== null;
 }
 
+/** True when custom-theme.json is readable and parses into a valid theme. */
+export function hasCustomTheme(): boolean {
+  return getThemeCss('custom-theme') !== null;
+}
+
 /**
  * The theme to render: the stored one, falling back to 'apple-music' when it is
- * unknown or when 'custom' is stored with no readable custom.css behind it.
+ * unknown or when a custom source is stored with nothing readable behind it
+ * (a missing or blank custom.css, or a missing or invalid custom-theme.json).
  */
 export function resolveTheme(): ThemeName {
   const theme = getTheme();
   if (!isThemeName(theme)) return 'apple-music';
   if (theme === 'custom' && getThemeCss('custom') === null) return 'apple-music';
+  if (theme === 'custom-theme' && getThemeCss('custom-theme') === null) return 'apple-music';
   return theme;
 }
 
@@ -155,21 +177,55 @@ function readCustomCss(): string | null {
   }
 }
 
+function readCustomThemeCss(): string | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(customThemePath(), 'utf-8');
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== 'ENOENT') {
+      themeLog.warn('Failed to read custom-theme.json from userData directory', error);
+    }
+    return null;
+  }
+  if (raw.trim().length === 0) return null;
+  const result = parseCustomTheme(raw);
+  if (!result.ok) {
+    // A malformed file is the user's to fix, so the reason is logged rather than
+    // swallowed; the theme falls back to apple-music until it parses.
+    themeLog.warn(`custom-theme.json ignored: ${result.error}`);
+    return null;
+  }
+  return buildThemeCss(result.theme);
+}
+
 /** Drop the cached custom.css. Exported for the watcher below and for tests; nothing else needs it. */
 export function invalidateCustomCssCache(): void {
   customCssCache = null;
   customCssCached = false;
 }
 
-function disableCustomCssCache(): void {
+/** Drop the cached custom-theme.json stylesheet. Exported for the watcher and tests. */
+export function invalidateCustomThemeCache(): void {
+  customThemeCache = null;
+  customThemeCached = false;
+}
+
+// Switches both custom caches off, for when the watcher that would clear them
+// never starts or has died. Leaving a warm cache with no invalidation path would
+// serve stale contents for the life of the process.
+function disableCustomCaches(): void {
   customCssCacheEnabled = false;
   invalidateCustomCssCache();
+  customThemeCacheEnabled = false;
+  invalidateCustomThemeCache();
 }
 
 /**
- * Stylesheet for a theme, or null for 'apple-music' and for a missing or blank
- * custom.css. Bundled themes are rendered once and cached; custom.css is cached
- * only while the watcher below is alive to invalidate it.
+ * Stylesheet for a theme, or null for 'apple-music', a missing or blank
+ * custom.css, and a missing or invalid custom-theme.json. Bundled themes are
+ * rendered once and cached; the two custom sources are cached only while the
+ * watcher below is alive to invalidate them.
  */
 export function getThemeCss(name: ThemeName): string | null {
   if (name === 'apple-music') return null;
@@ -179,6 +235,15 @@ export function getThemeCss(name: ThemeName): string | null {
     if (customCssCacheEnabled) {
       customCssCache = css;
       customCssCached = true;
+    }
+    return css;
+  }
+  if (name === 'custom-theme') {
+    if (customThemeCached) return customThemeCache;
+    const css = readCustomThemeCss();
+    if (customThemeCacheEnabled) {
+      customThemeCache = css;
+      customThemeCached = true;
     }
     return css;
   }
@@ -252,56 +317,63 @@ export function initThemeCSS(win: BrowserWindow): void {
 
   // Last, because the debounced callback below calls applyThemeCSSInternal and
   // resolveTheme against the window this function has just wired up.
-  initCustomCssWatcher(win);
+  initCustomFilesWatcher(win);
 }
 
 /**
- * Watch the userData directory for custom.css changes, re-apply the CSS when the
- * stored theme needs it, and rebuild the tray. Owns its debounce timer and closes
- * both on will-quit.
+ * Watch the userData directory for custom.css and custom-theme.json changes,
+ * re-apply the active theme when the changed file backs it, and rebuild the
+ * tray. Owns its debounce timer and closes both on will-quit. One directory
+ * watch covers both files.
  */
-function initCustomCssWatcher(win: BrowserWindow): void {
-  let customCssTimer: NodeJS.Timeout | null = null;
+function initCustomFilesWatcher(win: BrowserWindow): void {
+  let reloadTimer: NodeJS.Timeout | null = null;
   const userDataPath = app.getPath('userData');
   let watcher: fs.FSWatcher | null = null;
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
     watcher = fs.watch(userDataPath, { persistent: false }, (eventType, filename) => {
-      // macOS may emit a null filename for directory-level change events.
-      if (filename !== null && filename.toString() !== customCssFilename) return;
-      themeLog.debug(`custom.css watcher event: ${eventType}`);
+      // macOS may emit a null filename for directory-level change events; treat
+      // it as a change to either file rather than dropping it.
+      const name = filename === null ? null : filename.toString();
+      if (name !== null && name !== customCssFilename && name !== customThemeFilename) return;
+      themeLog.debug(`custom theme watcher event: ${eventType} ${name ?? '(unknown)'}`);
       // Before the debounce, not inside it: a tray rebuild during the debounce
       // window must not read the previous contents back out of the cache.
-      invalidateCustomCssCache();
-      if (customCssTimer) clearTimeout(customCssTimer);
-      customCssTimer = setTimeout(() => {
-        customCssTimer = null;
+      if (name === null || name === customCssFilename) invalidateCustomCssCache();
+      if (name === null || name === customThemeFilename) invalidateCustomThemeCache();
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null;
         if (win.isDestroyed()) return;
+        const stored = getTheme();
         const resolved = resolveTheme();
-        if (resolved === 'custom') {
-          void applyThemeCSSInternal('custom');
-        } else if (getTheme() === 'custom') {
+        if (resolved === 'custom' || resolved === 'custom-theme') {
+          void applyThemeCSSInternal(resolved);
+        } else if (stored === 'custom' || stored === 'custom-theme') {
+          // The stored custom source lost its backing file, so resolveTheme()
+          // now returns apple-music and the sheet on the page must come off.
           void applyThemeCSSInternal('apple-music');
         }
-        // Unconditional: creating custom.css adds the tray Style entry and deleting it removes
-        // the entry, whichever theme is stored.
+        // Unconditional: creating or deleting either file adds or removes its
+        // tray Style entry whichever theme is stored.
         rebuildTrayCallback?.();
       }, THEME_RELOAD_DEBOUNCE_MS);
     });
     watcher.on('error', (error) => {
-      themeLog.warn('custom.css watcher error', error);
-      // Node closes the watcher on error, so nothing is left to clear the cache.
-      disableCustomCssCache();
+      themeLog.warn('custom theme watcher error', error);
+      // Node closes the watcher on error, so nothing is left to clear the caches.
+      disableCustomCaches();
     });
   } catch (error) {
-    themeLog.warn('Failed to initialise custom.css watcher', error);
-    disableCustomCssCache();
+    themeLog.warn('Failed to initialise custom theme watcher', error);
+    disableCustomCaches();
   }
 
   app.on('will-quit', () => {
-    if (customCssTimer) {
-      clearTimeout(customCssTimer);
-      customCssTimer = null;
+    if (reloadTimer) {
+      clearTimeout(reloadTimer);
+      reloadTimer = null;
     }
     if (watcher) {
       watcher.close();
