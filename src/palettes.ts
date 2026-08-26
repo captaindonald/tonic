@@ -15,10 +15,12 @@
 // works, attribution given as a courtesy):
 // - Catppuccin (Mocha/Latte)  https://github.com/catppuccin/palette      MIT
 // - Dracula                   https://github.com/dracula/dracula-theme   MIT
+// - Everforest (Dark/Light)   https://github.com/sainnhe/everforest      MIT
 // - Gruvbox                   https://github.com/morhetz/gruvbox         MIT
 // - Nord                      https://github.com/nordtheme/nord          MIT
 // - Ros\u00e9 Pine (Main/Dawn)     https://github.com/rose-pine/palette       MIT
 // - Solarized                 https://github.com/altercation/solarized   MIT
+// - Tokyo Night (Night/Day)   https://github.com/enkia/tokyo-night-vscode-theme  MIT
 
 import type { SchemeColours, ThemeDefinition } from './themeTemplate';
 
@@ -30,13 +32,19 @@ interface BundledTheme extends ThemeDefinition {
 export type BundledThemeName =
   | 'catppuccin'
   | 'dracula'
+  | 'everforest'
   | 'gruvbox'
   | 'nord'
   | 'rose-pine'
-  | 'solarized';
+  | 'solarized'
+  | 'tokyo-night';
 
-/** Active theme. 'apple-music' means no override CSS is injected at all. */
-export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
+/**
+ * Active theme. 'apple-music' means no override CSS is injected at all.
+ * 'custom' is a raw custom.css; 'custom-theme' is a structured custom-theme.json
+ * palette rendered through the same template as the bundled themes.
+ */
+export type ThemeName = 'apple-music' | BundledThemeName | 'custom' | 'custom-theme';
 
 // Dracula defines no official light scheme; the dark palette serves both
 // colour schemes, matching how Dracula presents everywhere else.
@@ -96,6 +104,40 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
     label: 'Dracula',
     dark: draculaDark,
     light: draculaDark,
+  },
+  {
+    name: 'everforest',
+    label: 'Everforest',
+    dark: {
+      // Dark, medium contrast
+      base: '#2d353b',
+      mantle: '#272e33',
+      crust: '#1e2326', // derived
+      surface0: '#343f44',
+      surface1: '#3d484d',
+      surface2: '#475258',
+      overlay: '#859289',
+      text: '#d3c6aa',
+      subtext1: '#bcc2ba', // derived
+      subtext0: '#a6b0a4', // derived
+      accent: '#a7c080',
+      accentHover: '#83c092',
+    },
+    light: {
+      // Light, medium contrast; fg darkened to hold 4.5:1 under the template alpha
+      base: '#fdf6e3',
+      mantle: '#f4f0d9', // derived
+      crust: '#efebd4',
+      surface0: '#e6e2cc', // derived
+      surface1: '#ddd8c0', // derived
+      surface2: '#bdc3af', // derived
+      overlay: '#939f91',
+      text: '#414b52', // derived
+      subtext1: '#5c6a72',
+      subtext0: '#4e5960', // derived
+      accent: '#8da101',
+      accentHover: '#35a77c',
+    },
   },
   {
     name: 'gruvbox',
@@ -229,6 +271,40 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       accentHover: '#2aa198',
     },
   },
+  {
+    name: 'tokyo-night',
+    label: 'Tokyo Night',
+    dark: {
+      // Night
+      base: '#1a1b26',
+      mantle: '#16161e',
+      crust: '#0f0f14', // derived
+      surface0: '#292e42',
+      surface1: '#414868',
+      surface2: '#565f89', // derived
+      overlay: '#545c7e',
+      text: '#c0caf5',
+      subtext1: '#a9b1d6',
+      subtext0: '#828bb8', // derived
+      accent: '#7aa2f7',
+      accentHover: '#bb9af7',
+    },
+    light: {
+      // Day; fg darkened to hold 4.5:1 under the template alpha
+      base: '#e1e2e7',
+      mantle: '#d5d6db', // derived
+      crust: '#c8c9ce', // derived
+      surface0: '#c4c8da', // derived
+      surface1: '#a8aecb', // derived
+      surface2: '#9699a8', // derived
+      overlay: '#7a82ab', // derived
+      text: '#2e3a5e', // derived
+      subtext1: '#414c78', // derived
+      subtext0: '#4c5c9e', // derived
+      accent: '#2e7de9',
+      accentHover: '#9854f1',
+    },
+  },
 ];
 
 const bundledThemesByName = new Map(BUNDLED_THEMES.map(theme => [theme.name, theme] as const));
@@ -242,6 +318,7 @@ export function bundledTheme(name: BundledThemeName): BundledTheme | undefined {
 export function isThemeName(value: string): value is ThemeName {
   return value === 'apple-music'
     || value === 'custom'
+    || value === 'custom-theme'
     || bundledThemesByName.has(value as BundledThemeName);
 }
 
@@ -249,5 +326,6 @@ export function isThemeName(value: string): value is ThemeName {
 export function themeLabel(name: ThemeName): string {
   if (name === 'apple-music') return 'Apple Music';
   if (name === 'custom') return 'Custom';
+  if (name === 'custom-theme') return 'Custom Theme';
   return bundledThemesByName.get(name)?.label ?? name;
 }

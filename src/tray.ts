@@ -9,7 +9,7 @@ import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { BUNDLED_THEMES, themeLabel } from './palettes';
-import { applyTheme, hasCustomCss, resolveTheme } from './theme';
+import { applyTheme, hasCustomCss, hasCustomTheme, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
@@ -426,6 +426,14 @@ function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOpt
       type: 'radio',
       checked: currentTheme === 'custom',
       click: () => { setTheme('custom'); applyTheme('custom'); refresh(); },
+    });
+  }
+  if (hasCustomTheme()) {
+    items.push({
+      label: themeLabel('custom-theme'),
+      type: 'radio',
+      checked: currentTheme === 'custom-theme',
+      click: () => { setTheme('custom-theme'); applyTheme('custom-theme'); refresh(); },
     });
   }
   return {

@@ -1,6 +1,6 @@
 {
-  "name": "sidra",
-  "productName": "Sidra",
+  "name": "tonic",
+  "productName": "Tonic",
   "version": "0.4.1",
   "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "author": "Martin Wimpress <code@wimpress.io>",
-  "homepage": "https://github.com/wimpysworld/sidra",
+  "homepage": "https://github.com/captaindonald/tonic",
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
   "devDependencies": {
@@ -32,8 +32,8 @@
     "undici": "7.29.0"
   },
   "build": {
-    "appId": "world.wimpys.sidra",
-    "productName": "Sidra",
+    "appId": "io.github.captaindonald.tonic",
+    "productName": "Tonic",
     "copyright": "Copyright (c) Martin Wimpress",
     "publish": {
       "provider": "github",
@@ -56,6 +56,7 @@
       "assets/authStyleFix.css",
       "assets/sidra-logo.png",
       "assets/splash.html",
+      "assets/tonic-lockup.png",
       "assets/styleFix.css",
       "assets/windowChrome.css"
     ],
@@ -79,7 +80,7 @@
         "snap"
       ],
       "category": "Audio",
-      "executableName": "sidra",
+      "executableName": "tonic",
       "desktop": {
         "entry": {
           "Actions": "PlayPause;Next;Previous;Stop;",
@@ -89,22 +90,22 @@
           "PlayPause": {
             "Name": "Play-Pause",
             "Name[de]": "Abspielen-Pausieren",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.tonic /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause"
           },
           "Next": {
             "Name": "Next",
             "Name[de]": "Nächstes",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.tonic /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next"
           },
           "Previous": {
             "Name": "Previous",
             "Name[de]": "Vorheriges",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.tonic /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous"
           },
           "Stop": {
             "Name": "Stop",
             "Name[de]": "Stop",
-            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop"
+            "Exec": "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.tonic /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop"
           }
         }
       }
@@ -141,7 +142,7 @@
         "slots": [
           {
             "mpris": {
-              "name": "sidra"
+              "name": "tonic"
             }
           }
         ],

@@ -34,8 +34,11 @@ const CONTENT_READY_POLL_MS = 100;
 const CONTENT_READY_TIMEOUT_MS = 3500;
 const CSS_READY_TIMEOUT_MS = 10000;
 const UPDATE_CHECK_DELAY_MS = 5000;
-const SPLASH_WIDTH_PX = 300;
-const SPLASH_HEIGHT_PX = 350;
+// Sized around the 480x230 lockup in assets/splash.html, plus the spinner and
+// loading text beneath it. Widening the window is what keeps the lockup at its
+// natural aspect; scaling the artwork down to a narrower window squashed it.
+const SPLASH_WIDTH_PX = 540;
+const SPLASH_HEIGHT_PX = 400;
 const MAIN_WINDOW_WIDTH_PX = 1280;
 const MAIN_WINDOW_HEIGHT_PX = 800;
 
@@ -63,7 +66,7 @@ mainLog.info(`${app.name} ${app.getVersion()}`);
 // --- App identity: must be set before app.whenReady() on Windows, or neither
 // desktop notifications nor the GSMTC media identity attach to Sidra ---
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.wimpysworld.sidra');
+  app.setAppUserModelId('io.github.captaindonald.tonic');
 }
 
 // --- Platform switches: must run before app.whenReady() ---
@@ -74,11 +77,11 @@ if (process.platform === 'linux') {
   // AudioServiceOutOfProcess off: it moves audio back in-process, which is
   // where SetGlobalAppName can reach PulseAudio at all.
   app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess');
-  // Set the XDG desktop name so GetXdgAppId() returns 'sidra' and
-  // GetPossiblyOverriddenApplicationName() can read Name= from sidra.desktop.
+  // Set the XDG desktop name so GetXdgAppId() returns 'tonic' and
+  // GetPossiblyOverriddenApplicationName() can read Name= from tonic.desktop.
   // Pairs with the AudioServiceOutOfProcess switch above: without both, the
   // PulseAudio stream is labelled "Chromium" and no PULSE_PROP_* override helps.
-  app.setDesktopName('sidra.desktop');
+  app.setDesktopName('tonic.desktop');
   mainLog.info('Linux platform switches applied');
 }
 

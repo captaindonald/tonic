@@ -106,6 +106,7 @@ vi.mock('../src/theme', () => ({
   applyTheme: vi.fn(),
   resolveTheme: vi.fn(),
   hasCustomCss: vi.fn(),
+  hasCustomTheme: vi.fn(),
 }));
 
 vi.mock('../src/artwork', () => ({
@@ -124,7 +125,7 @@ import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getC
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
-import { applyTheme, hasCustomCss, resolveTheme } from '../src/theme';
+import { applyTheme, hasCustomCss, hasCustomTheme, resolveTheme } from '../src/theme';
 import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from '../src/integrations/lastfm';
 import { FakePlayer } from './mocks/player';
 import { setPlatform, restorePlatform } from './mocks/platform';
@@ -151,6 +152,7 @@ function resetTrayMocks(): void {
   vi.mocked(isLastfmConfigured).mockReturnValue(false);
   vi.mocked(resolveTheme).mockReturnValue('apple-music');
   vi.mocked(hasCustomCss).mockReturnValue(false);
+  vi.mocked(hasCustomTheme).mockReturnValue(false);
   vi.mocked(getUpdateInfo).mockReturnValue(null);
   vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   vi.mocked(nativeImage.createFromPath).mockClear();
@@ -720,7 +722,7 @@ describe('createTray - menu template inspection', () => {
 
     it('offers every theme entry on Classical', () => {
       const submenu = styleItemFor('classical').submenu as Electron.MenuItemConstructorOptions[];
-      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized']);
+      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Everforest', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized', 'Tokyo Night']);
       expect(submenu.every(item => item.enabled !== false)).toBe(true);
     });
 
@@ -791,6 +793,15 @@ describe('createTray - menu template inspection', () => {
       expect(submenu.some(item => item.label === 'Custom')).toBe(false);
       expect(tickedLabels()).toEqual(['Apple Music']);
     });
+
+    it('ticks Custom Theme when custom-theme.json is present and resolves to it', () => {
+      vi.mocked(resolveTheme).mockReturnValue('custom-theme');
+      vi.mocked(hasCustomTheme).mockReturnValue(true);
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Custom Theme');
+      expect(tickedLabels()).toEqual(['Custom Theme']);
+    });
   });
 
   describe('style submenu', () => {
@@ -806,7 +817,7 @@ describe('createTray - menu template inspection', () => {
       const styleItem = findItem(template, 'Style');
       const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
       const labels = submenu.map(item => item.label);
-      expect(labels).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized']);
+      expect(labels).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Everforest', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized', 'Tokyo Night']);
       expect(submenu.every(item => item.type === 'radio')).toBe(true);
     });
 
@@ -823,6 +834,27 @@ describe('createTray - menu template inspection', () => {
       styleItem = findItem(template, 'Style');
       submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
       expect(submenu.some(item => item.label === 'Custom')).toBe(true);
+    });
+
+    it('adds Custom Theme only when custom-theme.json exists', () => {
+      createTray();
+      let submenu = (findItem(getLastTemplate(), 'Style')!.submenu) as Electron.MenuItemConstructorOptions[];
+      expect(submenu.some(item => item.label === 'Custom Theme')).toBe(false);
+
+      vi.mocked(hasCustomTheme).mockReturnValue(true);
+      createTray();
+      submenu = (findItem(getLastTemplate(), 'Style')!.submenu) as Electron.MenuItemConstructorOptions[];
+      expect(submenu.some(item => item.label === 'Custom Theme')).toBe(true);
+    });
+
+    it('offers both custom entries when both files exist', () => {
+      vi.mocked(hasCustomCss).mockReturnValue(true);
+      vi.mocked(hasCustomTheme).mockReturnValue(true);
+      createTray();
+      const submenu = (findItem(getLastTemplate(), 'Style')!.submenu) as Electron.MenuItemConstructorOptions[];
+      const labels = submenu.map(item => item.label);
+      expect(labels).toContain('Custom');
+      expect(labels).toContain('Custom Theme');
     });
 
     it('clicking a theme radio updates config and applies theme', () => {

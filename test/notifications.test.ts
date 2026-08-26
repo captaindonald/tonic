@@ -6,6 +6,8 @@ import { FakeNotification, notifyFake, resetNotifyFake } from './mocks/notify';
 
 import { downloadArtwork } from '../src/artwork';
 import { createNotification } from '../src/notify';
+import { sendCommand } from '../src/commandBridge';
+import { getTrayStrings } from '../src/i18n';
 import { setNotificationsEnabled } from '../src/config';
 import { init } from '../src/integrations/notifications';
 import { NowPlayingPayload } from '../src/player';
@@ -20,6 +22,13 @@ const DEBOUNCE_MS = 1500;
 // and a disk write per track. The gate must sit in front of it.
 vi.mock('../src/artwork', () => ({
   downloadArtwork: vi.fn(() => Promise.resolve('/tmp/sidra-test/artwork.jpg')),
+}));
+
+// The action buttons forward transport commands through the bridge, so the
+// bridge is stubbed and the tests read the command each button sent.
+vi.mock('../src/commandBridge', () => ({
+  sendCommand: vi.fn(),
+  initCommandBridge: vi.fn(),
 }));
 
 const TRACK: NowPlayingPayload = {
@@ -67,11 +76,16 @@ describe('notifications integration', () => {
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
+    const strings = getTrayStrings();
     expect(vi.mocked(createNotification)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createNotification)).toHaveBeenCalledWith({
       title: 'Blue Monday',
       body: 'New Order - Power, Corruption & Lies',
       silent: true,
+      actions: [
+        { type: 'button', text: strings.previous },
+        { type: 'button', text: strings.next },
+      ],
     });
     expect(shown()?.show).toHaveBeenCalledOnce();
   });
@@ -81,6 +95,17 @@ describe('notifications integration', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
     expect(shown()?.options.body).toBe('New Order');
+  });
+
+  it('forwards the transport command for each action button', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    shown()?.handlers.action?.({}, 0);
+    expect(vi.mocked(sendCommand)).toHaveBeenLastCalledWith('player:previous');
+
+    shown()?.handlers.action?.({}, 1);
+    expect(vi.mocked(sendCommand)).toHaveBeenLastCalledWith('player:next');
   });
 
   it('schedules nothing while notifications are disabled', async () => {

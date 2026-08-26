@@ -7,7 +7,12 @@
 <title>Loading</title>
 <link rel="stylesheet" href="windowChrome.css">
 <style>
+/* windowChrome.css sizes .icon to a 128px square for the about window's mark.
+   The splash carries the wide lockup, so it overrides both axes here rather
+   than in the shared sheet, which would stretch the about window's icon. */
 .icon {
+  width: 480px;
+  height: 230px;
   margin-bottom: 24px;
 }
 .spinner {
@@ -30,7 +35,7 @@
 </style>
 </head>
 <body>
-<img class="icon" src="sidra-logo.png" alt="" width="128" height="128">
+<img class="icon" src="tonic-lockup.png" alt="" width="480" height="230">
 <div class="spinner"></div>
 <span class="loading-text">Loading...</span>
 <script>

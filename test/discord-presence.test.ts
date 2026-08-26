@@ -252,7 +252,7 @@ describe('discord presence integration', () => {
       details: 'Blue Monday',
       state: 'by New Order',
       buttons: [
-        { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
+        { label: 'Tonic', url: 'https://github.com/captaindonald/tonic' },
         { label: 'Play on Apple Music', url: TRACK.url },
       ],
       // sendActivity() anchors both stamps to Date.now() at fire time, and the
