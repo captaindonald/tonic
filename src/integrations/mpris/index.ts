@@ -69,6 +69,30 @@ class MediaPlayer2 extends Interface {
     return ['https'];
   }
 
+  // Reads the live window state rather than a cache: the user can toggle
+  // fullscreen from the window chrome or a shortcut, so the window is the only
+  // source that is never stale.
+  get Fullscreen(): boolean {
+    return this._getMainWindow()?.isFullScreen() ?? false;
+  }
+
+  set Fullscreen(value: boolean) {
+    const win = this._getMainWindow();
+    if (!win) return;
+    win.setFullScreen(value);
+    // dbus-next emits nothing of its own accord, so a client that set the
+    // property learns the new value only if this interface signals it.
+    try {
+      Interface.emitPropertiesChanged(this, { Fullscreen: value }, []);
+    } catch (err: unknown) {
+      mprisLog.warn('failed to emit Fullscreen change:', errorMessage(err));
+    }
+  }
+
+  get CanSetFullscreen(): boolean {
+    return true;
+  }
+
   Raise(): void {
     const win = this._getMainWindow();
     if (win) {
@@ -110,6 +134,14 @@ MediaPlayer2.configureMembers({
     },
     SupportedUriSchemes: {
       signature: 'as',
+      access: ACCESS_READ,
+    },
+    Fullscreen: {
+      signature: 'b',
+      access: ACCESS_READWRITE,
+    },
+    CanSetFullscreen: {
+      signature: 'b',
       access: ACCESS_READ,
     },
   },

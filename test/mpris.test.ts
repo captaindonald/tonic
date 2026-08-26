@@ -57,6 +57,8 @@ const busStub = {
 interface WindowStub {
   loadURL: ReturnType<typeof vi.fn>;
   webContents: { send: ReturnType<typeof vi.fn> };
+  isFullScreen: ReturnType<typeof vi.fn>;
+  setFullScreen: ReturnType<typeof vi.fn>;
 }
 
 interface PlayerInterface {
@@ -118,7 +120,12 @@ beforeEach(() => {
   emissions = [];
   setMusicService('music');
   // loadURL must return a promise: production attaches a .catch() to it.
-  win = { loadURL: vi.fn(() => Promise.resolve()), webContents: { send: vi.fn() } };
+  win = {
+    loadURL: vi.fn(() => Promise.resolve()),
+    webContents: { send: vi.fn() },
+    isFullScreen: vi.fn(() => false),
+    setFullScreen: vi.fn(),
+  };
   player = new FakePlayer();
 });
 
@@ -180,6 +187,41 @@ describe('MPRIS OpenUri', () => {
 // to 'Paused' leaves a client showing a pause button for a player that has
 // stopped. AGENTS.md also forbids an early-return guard for the transient
 // states, so those are pinned here rather than left to read as an accident.
+describe('MPRIS Fullscreen', () => {
+  interface RootInterface {
+    Fullscreen: boolean;
+    readonly CanSetFullscreen: boolean;
+  }
+
+  // init() exports the root interface first, so it is the first export's second
+  // argument.
+  function initRootInterface(): RootInterface {
+    initPlayerInterface();
+    return busStub.export.mock.calls[0][1] as RootInterface;
+  }
+
+  it('advertises that fullscreen can be set', () => {
+    expect(initRootInterface().CanSetFullscreen).toBe(true);
+  });
+
+  it('reads the live window fullscreen state', () => {
+    win.isFullScreen.mockReturnValue(true);
+    expect(initRootInterface().Fullscreen).toBe(true);
+  });
+
+  it('enters fullscreen and signals the change', () => {
+    initRootInterface().Fullscreen = true;
+    expect(win.setFullScreen).toHaveBeenCalledWith(true);
+    expect(emissions).toContainEqual({ Fullscreen: true });
+  });
+
+  it('leaves fullscreen and signals the change', () => {
+    initRootInterface().Fullscreen = false;
+    expect(win.setFullScreen).toHaveBeenCalledWith(false);
+    expect(emissions).toContainEqual({ Fullscreen: false });
+  });
+});
+
 describe('MPRIS PlaybackStatus mapping', () => {
   const STATUS_TABLE: ReadonlyArray<readonly [number, string]> = [
     [PlaybackState.None, 'Stopped'],
