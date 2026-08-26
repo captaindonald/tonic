@@ -1,0 +1,71 @@
+# Maintainer: captaindonald
+#
+# Personal build of Tonic (a fork of Sidra) — an Apple Music desktop client.
+# Not published to the AUR; kept here so `makepkg -si` installs the fork cleanly
+# on Arch/CachyOS with full desktop integration: the aqua icon, a PipeWire stream
+# labelled "Tonic", and the itms:// URL handler (none of which a dev run gets).
+#
+# Build + install:  cd packaging/aur && makepkg -si
+# Update later:      bump the branch/pkgver below and re-run makepkg -si
+
+pkgname=tonic
+pkgver=0.4.1
+pkgrel=1
+pkgdesc="An elegant Apple Music desktop client (personal Tonic fork of Sidra)"
+arch=('x86_64')
+url="https://github.com/captaindonald/tonic"
+license=('custom:BlueOak-1.0.0')
+# Runtime libraries the bundled CastLabs Electron links against.
+depends=('gtk3' 'nss' 'libnotify' 'libxss' 'alsa-lib')
+# nodejs must be 24+ (see .nvmrc); npm and git drive the build.
+makedepends=('git' 'nodejs' 'npm')
+# The app payload is an Electron bundle: stripping and debug packaging break it.
+options=('!strip' '!debug')
+source=("$pkgname::git+https://github.com/captaindonald/tonic.git#branch=feat/theming"
+        "tonic.desktop")
+sha256sums=('SKIP'
+            'SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  node -p "require('./package.json').version"
+}
+
+build() {
+  cd "$pkgname"
+  npm install
+  # npm install does not reliably fetch the Electron binary; make sure it exists
+  # before electron-builder packages it.
+  node node_modules/electron/install.js
+  # Writes an empty Last.fm credentials file when the CI env vars are unset, which
+  # is the correct state for a personal build (the feature stays inert).
+  node scripts/inject-lastfm-credentials.cjs
+  npx tsc
+  # `dir` unpacks the app without fpm/AppImage — all a native package needs. EVS
+  # VMP signing is macOS/Windows-only, so no CastLabs signing keys are required.
+  npx electron-builder --linux dir
+}
+
+package() {
+  cd "$pkgname"
+
+  # App payload under /opt, with the SUID sandbox helper owned root and set 4755
+  # so Chromium's namespace sandbox works without --no-sandbox.
+  install -dm755 "$pkgdir/opt/$pkgname"
+  cp -a release/linux-unpacked/. "$pkgdir/opt/$pkgname/"
+  chmod 4755 "$pkgdir/opt/$pkgname/chrome-sandbox"
+
+  # Launcher on PATH (electron-builder names the binary after executableName).
+  install -dm755 "$pkgdir/usr/bin"
+  ln -sf "/opt/$pkgname/$pkgname" "$pkgdir/usr/bin/$pkgname"
+
+  # Icon into the hicolor theme: this is what makes the launcher show the aqua
+  # icon and the PulseAudio/PipeWire stream resolve application.icon_name=tonic.
+  install -Dm644 build/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
+
+  # Desktop entry: Name=Tonic drives the stream label, plus the MPRIS actions and
+  # the itms:// scheme handler.
+  install -Dm644 "$srcdir/tonic.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
