@@ -1,9 +1,7 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <g fill="#2c2c2c">
-    <rect x="214" y="150" width="30" height="230" rx="8"/>
-    <rect x="386" y="104" width="30" height="230" rx="8"/>
-    <path d="M214 150 L416 104 L416 150 L214 196 Z"/>
-    <ellipse cx="166" cy="376" rx="60" ry="44" transform="rotate(-16 166 376)"/>
-    <ellipse cx="338" cy="330" rx="60" ry="44" transform="rotate(-16 338 330)"/>
+    <rect x="270" y="96" width="34" height="272" rx="12"/>
+    <path d="M304 96 C 400 110 440 185 410 268 C 426 190 400 148 304 162 Z"/>
+    <ellipse cx="200" cy="360" rx="92" ry="70" transform="rotate(-20 200 360)"/>
   </g>
 </svg>
