@@ -4,6 +4,8 @@ import { NowPlayingPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 import { createNotification, notificationsAvailable } from '../../notify';
+import { sendCommand } from '../../commandBridge';
+import { getTrayStrings } from '../../i18n';
 import { errorMessage } from '../../utils';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
@@ -39,10 +41,18 @@ async function showNotification(
       ])
     : null;
 
+  // Transport buttons carry the same localised labels as the tray. A daemon
+  // without the "actions" capability drops them and still shows the body, so
+  // this only ever adds controls where the desktop supports them.
+  const strings = getTrayStrings();
   const options: Electron.NotificationConstructorOptions = {
     title: payload.name,
     body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
     silent: true,
+    actions: [
+      { type: 'button', text: strings.previous },
+      { type: 'button', text: strings.next },
+    ],
   };
 
   if (artworkPath) {
@@ -54,6 +64,11 @@ async function showNotification(
   if (!notification) {
     return;
   }
+
+  // The actions array orders the buttons, so index 0 is Previous and 1 is Next.
+  notification.on('action', (_event, index) => {
+    sendCommand(index === 0 ? 'player:previous' : 'player:next');
+  });
 
   notification.on('show', () => {
     notifLog.debug('notification displayed:', payload.name);
