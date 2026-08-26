@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Tonic">
+<title>Tonic</title>
+<g fill="none" stroke="#FFFFFF" stroke-linecap="round">
+<path d="M8 6L17 4" stroke-width="3"/>
+<path d="M8 16V6" stroke-width="2"/>
+<path d="M17 13V4" stroke-width="2"/>
+</g>
+<circle cx="6" cy="16" r="3" fill="#FFFFFF"/>
+<circle cx="15" cy="13" r="3" fill="#FFFFFF"/>
+</svg>
