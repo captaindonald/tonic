@@ -34,8 +34,11 @@ const CONTENT_READY_POLL_MS = 100;
 const CONTENT_READY_TIMEOUT_MS = 3500;
 const CSS_READY_TIMEOUT_MS = 10000;
 const UPDATE_CHECK_DELAY_MS = 5000;
-const SPLASH_WIDTH_PX = 300;
-const SPLASH_HEIGHT_PX = 350;
+// Sized around the 480x230 lockup in assets/splash.html, plus the spinner and
+// loading text beneath it. Widening the window is what keeps the lockup at its
+// natural aspect; scaling the artwork down to a narrower window squashed it.
+const SPLASH_WIDTH_PX = 540;
+const SPLASH_HEIGHT_PX = 400;
 const MAIN_WINDOW_WIDTH_PX = 1280;
 const MAIN_WINDOW_HEIGHT_PX = 800;
 
