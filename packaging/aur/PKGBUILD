@@ -21,7 +21,7 @@ depends=('gtk3' 'nss' 'libnotify' 'libxss' 'alsa-lib')
 makedepends=('git' 'nodejs' 'npm')
 # The app payload is an Electron bundle: stripping and debug packaging break it.
 options=('!strip' '!debug')
-source=("$pkgname::git+https://github.com/captaindonald/tonic.git#branch=feat/theming"
+source=("$pkgname::git+https://github.com/captaindonald/tonic.git#branch=main"
         "tonic.desktop")
 sha256sums=('SKIP'
             'SKIP')
