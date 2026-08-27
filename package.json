@@ -37,8 +37,8 @@
     "copyright": "Copyright (c) Martin Wimpress",
     "publish": {
       "provider": "github",
-      "owner": "wimpysworld",
-      "repo": "sidra"
+      "owner": "captaindonald",
+      "repo": "tonic"
     },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,

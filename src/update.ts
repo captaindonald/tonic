@@ -17,7 +17,7 @@ const UPDATE_CHECK_TIMEOUT_MS = 10000;
 
 const updateLog = log.scope('update');
 
-const GITHUB_API_URL = 'https://api.github.com/repos/wimpysworld/sidra/releases/latest';
+const GITHUB_API_URL = 'https://api.github.com/repos/captaindonald/tonic/releases/latest';
 
 export interface UpdateInfo {
   version: string;
