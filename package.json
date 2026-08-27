@@ -2,7 +2,7 @@
   "name": "tonic",
   "productName": "Tonic",
   "version": "0.4.2",
-  "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
+  "description": "An elegant Apple Music desktop client",
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "node scripts/inject-lastfm-credentials.cjs",
@@ -73,6 +73,7 @@
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb",
