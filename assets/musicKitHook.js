@@ -372,31 +372,79 @@
     let wheelDelta = 0;
 
     /**
-     * Change the volume when the pointer is over the player bar volume control.
+     * The volume control in an event's composed path, or null.
      *
      * Both services put the `chrome-volume` class token on the control, on a
      * `div` for music.apple.com and on an `amp-chrome-volume` element for
      * classical.music.apple.com, so the gate matches that token anywhere in the
      * composed path and never the element name, which would work on Classical
      * and silently do nothing on Apple Music. Never write a Svelte scope hash
-     * into the selector; those change on any Apple rebuild. Writing mk.volume
-     * reaches the main process by the existing playbackVolumeDidChange route.
+     * into the selector; those change on any Apple rebuild.
      *
-     * The listener is on window rather than on the control itself, because the
-     * control does not exist when the hook runs and is replaced on navigation
-     * and service switches.
+     * @param {Event} event - Any event whose composed path may cross the control
+     * @returns {EventTarget | null} The control, or null when not over it
+     */
+    const findVolumeControl = (event) => event.composedPath()
+      .find((target) => target.classList?.contains('chrome-volume')) || null;
+
+    /**
+     * Stop the page scrolling under the volume control, even when the wheel
+     * event only accumulates and moves the volume nowhere.
+     *
+     * Attached to the control itself, never to window. A non-passive wheel
+     * listener makes Chromium hold every wheel event in the listener's region
+     * for a blocking main-thread dispatch before the compositor may apply the
+     * scroll, and on window that region is the entire page: measured over a
+     * fixed 8 second wheel scroll of the New page, the window-level version of
+     * this listener dropped 48% of frames against 21% without it (issue #4).
+     * On the control the blocking region is the control's own bounds, where
+     * nothing scrolls anyway.
+     *
+     * @param {WheelEvent} event - The wheel event
+     */
+    const blockScrollUnderVolume = (event) => {
+      // Ctrl+scroll and pinch are zoom gestures, not volume ones.
+      if (!event.ctrlKey) event.preventDefault();
+    };
+
+    /**
+     * The control blockScrollUnderVolume is attached to. The control does not
+     * exist when the hook runs and is replaced on navigation and service
+     * switches, so the blocker is armed lazily instead: pointerover fires when
+     * the pointer moves onto the control, before any wheel event can target
+     * it, and the volume listener below re-arms as a fallback for a pointer
+     * the control was rebuilt under. A replaced control takes its listener
+     * with it, so nothing here detaches.
+     * @type {EventTarget | null}
+     */
+    let blockedVolumeControl = null;
+
+    /** @param {Event} event - Event whose composed path may cross the control */
+    const armVolumeBlocker = (event) => {
+      const control = findVolumeControl(event);
+      if (!control || control === blockedVolumeControl) return;
+      control.addEventListener('wheel', blockScrollUnderVolume, { passive: false });
+      blockedVolumeControl = control;
+    };
+
+    window.addEventListener('pointerover', armVolumeBlocker, { passive: true });
+
+    /**
+     * Change the volume when the pointer is over the player bar volume control.
+     *
+     * Passive, deliberately: stepping the volume needs no preventDefault, and
+     * this listener sits on window, where non-passive costs half the frames of
+     * every scroll (see blockScrollUnderVolume). Writing mk.volume reaches the
+     * main process by the existing playbackVolumeDidChange route.
      *
      * @param {WheelEvent} event - The wheel event
      */
     window.addEventListener('wheel', (event) => {
       // Ctrl+scroll and pinch are zoom gestures, not volume ones.
       if (event.ctrlKey) return;
-      const overVolume = event.composedPath()
-        .some((target) => target.classList?.contains('chrome-volume'));
-      if (!overVolume) return;
-      // Stop the page scrolling under the control, even when this event only
-      // accumulates and moves the volume nowhere.
-      event.preventDefault();
+      if (!findVolumeControl(event)) return;
+      // This event is past blocking either way, but the next one is not.
+      armVolumeBlocker(event);
 
       const hookedMk = window.__sidraHookedMk;
       if (!hookedMk) return;
@@ -416,7 +464,7 @@
       // and the result is clamped because MusicKit throws outside 0 to 1.
       const volume = hookedMk.volume - steps * VOLUME_STEP;
       hookedMk.volume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
-    }, { passive: false });
+    }, { passive: true });
 
     console.log('[Sidra] MusicKit hooked successfully');
 
