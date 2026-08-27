@@ -4,8 +4,11 @@
 // npm hook. In CI the env vars come from repository secrets.
 //
 // Local builds with no env set write an empty file rather than leaving it
-// absent, because packaging fails when an asarUnpack entry is missing. Tag
-// builds require both values, so official packages cannot lose Last.fm.
+// absent, because packaging fails when an asarUnpack entry is missing. The
+// credentials are optional on tag builds too: this fork carries no Last.fm
+// secrets, so a release ships with the feature hidden until they exist.
+// Upstream requires them on tags; restore isOfficialBuild() as the required
+// argument below if that gate is wanted again.
 //
 // An existing file that already holds credentials is left alone in a local
 // build when the env is unset, so building without the vars does not blank a
@@ -15,15 +18,14 @@
 // the source tree. The real secret ends up only in official build artefacts.
 const fs = require("fs");
 const path = require("path");
-const { isOfficialBuild, validateCredentialPair } = require("./release-credentials.cjs");
+const { validateCredentialPair } = require("./release-credentials.cjs");
 
 const apiKey = process.env.SIDRA_LASTFM_API_KEY || "";
 const apiSecret = process.env.SIDRA_LASTFM_API_SECRET || "";
 const credentialsAvailable = validateCredentialPair(
   process.env,
   "SIDRA_LASTFM_API_KEY",
-  "SIDRA_LASTFM_API_SECRET",
-  isOfficialBuild()
+  "SIDRA_LASTFM_API_SECRET"
 );
 
 const outPath = path.join(__dirname, "..", "assets", "lastfm-credentials.json");

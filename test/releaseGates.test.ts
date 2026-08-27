@@ -70,7 +70,10 @@ describe('release build scripts', () => {
     );
   });
 
-  it('fails Last.fm injection before writing an unconfigured tag build', () => {
+  it('lets an unconfigured tag build ship with Last.fm hidden', () => {
+    // This fork carries no Last.fm secrets, so the injection is optional on
+    // tag builds: absent credentials ship the feature hidden, exactly as a
+    // local build does. A populated local file is kept rather than blanked.
     const result = spawnSync(process.execPath, ['scripts/inject-lastfm-credentials.cjs'], {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -82,10 +85,8 @@ describe('release build scripts', () => {
       },
     });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      'SIDRA_LASTFM_API_KEY and SIDRA_LASTFM_API_SECRET are required for tag builds',
-    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/written empty|credentials kept/);
   });
 });
 
