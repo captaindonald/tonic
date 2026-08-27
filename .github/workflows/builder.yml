@@ -19,10 +19,7 @@ env:
     release/*.AppImage
     release/*.deb
     release/*.rpm
-    release/*.snap
-    release/*.dmg
-    release/*.exe
-    release/latest*.yml
+    release/latest-linux.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -177,20 +174,16 @@ jobs:
       matrix:
         include:
           # These flags decide the Linux targets, because a command-line target
-          # overrides the config. The list omits snap, which needs the separate
-          # root invocation below. Without these flags this step would build a
-          # snap unprivileged and the snap step would build it again.
-          # package.json build.linux.target is the fallback for a bare
-          # electron-builder run, which nothing here performs.
+          # overrides the config. package.json build.linux.target is the
+          # fallback for a bare electron-builder run, which nothing here
+          # performs. Tonic is Linux-first: the macOS and Windows legs went
+          # with the snap pipeline (macOS has Apple's own client, tag builds
+          # for both need EVS VMP signing secrets this fork does not carry,
+          # and the sidra Snap Store name belongs upstream); restore them from
+          # upstream's builder.yml if that changes.
           - os: linux
             runner: ubuntu-24.04
             targets: "--linux AppImage deb rpm"
-          - os: macos
-            runner: macos-latest
-            targets: "--mac dmg --x64 --arm64"
-          - os: windows
-            runner: windows-latest
-            targets: "--win nsis"
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -215,13 +208,8 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install dependencies
         run: npm ci
-      - name: Install uv
-        if: matrix.os == 'macos' || matrix.os == 'windows'
-        uses: astral-sh/setup-uv@v9.0.0
-      - name: Install snap tooling
-        if: matrix.os == 'linux'
+      - name: Install packaging tooling
         run: |
-          sudo snap install snapcraft --classic
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin rpm
       - name: Compile TypeScript
@@ -234,11 +222,6 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_ACCOUNT_NAME || '' }}
           EVS_PASSWD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_PASSWD || '' }}
-      # Snapcraft host mode needs root, so this cannot join the step above:
-      # that would run every Linux target, and EVS signing, as root.
-      - name: Build snap
-        if: matrix.os == 'linux'
-        run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
@@ -280,60 +263,6 @@ jobs:
         with:
           generate_release_notes: true
           files: ${{ env.RELEASE_ARTEFACTS }}
-
-  publish-snap:
-    name: Publish Snap 📦
-    needs: [sentinel, build]
-    if: startsWith(github.ref, 'refs/tags/') && needs.sentinel.result == 'success' && needs.build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Download Linux artefacts
-        uses: actions/download-artifact@v8
-        with:
-          name: sidra-linux
-          path: release/
-      - name: Locate snap file
-        id: find
-        run: |
-          set -euo pipefail
-          snap_file=$(find release -maxdepth 1 -type f -name '*.snap' -print -quit)
-          if [[ -z "$snap_file" ]]; then
-            echo "No snap package found in release/" >&2
-            exit 1
-          fi
-          echo "snap=$snap_file" >> "$GITHUB_OUTPUT"
-      - name: Install snapcraft
-        run: sudo snap install snapcraft --classic
-      - name: Upload snap to Store
-        id: upload
-        run: |
-          set -euo pipefail
-          upload_output=$(snapcraft upload "$SNAP_FILE")
-          printf '%s\n' "$upload_output"
-          revision=$(printf '%s\n' "$upload_output" | sed -nE 's/.*Revision[[:space:]]+([0-9]+).*/\1/p' | tail -n1)
-          if [[ -z "$revision" ]]; then
-            echo "Could not determine snap revision from upload output" >&2
-            exit 1
-          fi
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-        env:
-          SNAP_FILE: ${{ steps.find.outputs.snap }}
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-      - name: Release snap to edge
-        run: snapcraft release "$SNAP_NAME" "$SNAP_REVISION" "$SNAP_CHANNEL"
-        env:
-          SNAP_NAME: sidra
-          SNAP_REVISION: ${{ steps.upload.outputs.revision }}
-          SNAP_CHANNEL: edge
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-      - name: Show Snap Store revisions
-        continue-on-error: true
-        run: snapcraft revisions "$SNAP_NAME" --arch amd64
-        env:
-          SNAP_NAME: sidra
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
 
   nix-hash:
     name: Nix Hash 🔑
@@ -406,24 +335,18 @@ jobs:
             }
           }
 
-          # One deb is built. The dmg is built for both arches and nix/darwin.nix
-          # covers aarch64-darwin alone, so that one is matched on its arch.
+          # One deb is built; nix/linux.nix takes its URL and hash. The darwin
+          # update went with the macOS build leg: Tonic is Linux-first.
           linux_url=$(asset_url '\.deb$')
-          darwin_url=$(asset_url 'arm64\.dmg$')
 
           echo "⬇️  Fetching Linux deb: ${linux_url}"
           linux_hash=$(nix store prefetch-file --json --hash-type sha256 "${linux_url}" | jq -r '.hash')
           echo "🔑 Linux hash: ${linux_hash}"
 
-          echo "⬇️  Fetching Darwin dmg: ${darwin_url}"
-          darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "${darwin_url}" | jq -r '.hash')
-          echo "🔑 Darwin hash: ${darwin_hash}"
-
           update_nix nix/linux.nix "${linux_url}" "${linux_hash}" || exit 1
-          update_nix nix/darwin.nix "${darwin_url}" "${darwin_hash}" || exit 1
 
-          echo "✅ Updated nix/linux.nix and nix/darwin.nix"
-          git diff nix/linux.nix nix/darwin.nix
+          echo "✅ Updated nix/linux.nix"
+          git diff nix/linux.nix
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -435,7 +358,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "${BRANCH}"
-          git add nix/linux.nix nix/darwin.nix
+          git add nix/linux.nix
           git commit -m "chore(nix): update hashes for v${VERSION}"
           git push origin "${BRANCH}"
 
