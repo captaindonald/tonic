@@ -8,10 +8,17 @@ const hookScript = fs.readFileSync(
   'utf-8',
 );
 
-/** An event target in a composed path, carrying the classes given. */
+/**
+ * An event target in a composed path, carrying the classes given. It records
+ * listeners because armVolumeBlocker() attaches the non-passive scroll
+ * blocker to the volume control element it finds in the path.
+ */
 function element(classes: string) {
   const tokens = classes.split(' ');
-  return { classList: { contains: (token: string) => tokens.includes(token) } };
+  return {
+    addEventListener: vi.fn(),
+    classList: { contains: (token: string) => tokens.includes(token) },
+  };
 }
 
 /**
@@ -90,6 +97,10 @@ function createHarness({
     listener: (event: unknown) => void;
     options: unknown;
   }> = [];
+  const pointeroverListeners: Array<{
+    listener: (event: unknown) => void;
+    options: unknown;
+  }> = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
   const navigator = navigatorOverrides ?? { mediaSession };
@@ -116,6 +127,7 @@ function createHarness({
     ) => {
       if (event === 'message') messageListeners.push(listener);
       if (event === 'wheel') wheelListeners.push({ listener, options });
+      if (event === 'pointerover') pointeroverListeners.push({ listener, options });
     }),
     navigator,
   };
@@ -184,6 +196,13 @@ function createHarness({
       for (const { listener } of wheelListeners) listener(event);
       return event;
     },
+    // Sends one pointerover event to every registered listener, as the pointer
+    // moving onto the volume control does.
+    dispatchPointerOver: (path: unknown[]) => {
+      const event = { composedPath: () => path };
+      for (const { listener } of pointeroverListeners) listener(event);
+      return event;
+    },
     mediaSession,
     messageListeners,
     musicKit,
@@ -213,6 +232,7 @@ function createHarness({
       vm.runInContext(hookScript, context);
       for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
     },
+    pointeroverListeners,
     wheelListeners,
     window,
   };
@@ -501,10 +521,9 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.5 },
     });
 
-    const event = dispatchWheel({ deltaY: 100, path });
+    dispatchWheel({ deltaY: 100, path });
 
     expect(musicKit.volume).toBe(0.45);
-    expect(event.preventDefault).toHaveBeenCalled();
   });
 
   it('raises the volume a step when the wheel turns up over the volume control', () => {
@@ -596,19 +615,95 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0.45);
   });
 
-  it('registers the wheel listener as non-passive so preventDefault works', () => {
-    const { wheelListeners } = createHarness();
+  it('registers both window listeners as passive so no wheel event blocks scrolling', () => {
+    const { pointeroverListeners, wheelListeners } = createHarness();
 
     expect(wheelListeners).toHaveLength(1);
-    expect(wheelListeners[0].options).toEqual({ passive: false });
+    expect(wheelListeners[0].options).toEqual({ passive: true });
+    expect(pointeroverListeners).toHaveLength(1);
+    expect(pointeroverListeners[0].options).toEqual({ passive: true });
   });
 
-  it('installs no second wheel listener when the script is injected again', () => {
-    const { reinject, wheelListeners } = createHarness();
+  // The blocker tests build their own paths: the module-scope paths are shared
+  // across tests, and a shared element's mock accumulates attach calls from
+  // every harness in the file, which would make listener counts order-dependent.
+  const freshVolumePath = () => composedPath(
+    'chrome-volume__slider', 'chrome-volume', 'chrome-player',
+  );
+
+  it('arms a non-passive scroll blocker on the control when the pointer moves onto it', () => {
+    const { dispatchPointerOver } = createHarness();
+    const path = freshVolumePath();
+    const control = path[1] as ReturnType<typeof element>;
+
+    dispatchPointerOver(path);
+
+    expect(control.addEventListener).toHaveBeenCalledTimes(1);
+    expect(control.addEventListener).toHaveBeenCalledWith(
+      'wheel', expect.any(Function), { passive: false },
+    );
+  });
+
+  it('arms the blocker once for any number of pointerovers on one control', () => {
+    const { dispatchPointerOver } = createHarness();
+    const path = freshVolumePath();
+    const control = path[1] as ReturnType<typeof element>;
+
+    dispatchPointerOver(path);
+    dispatchPointerOver(path);
+
+    expect(control.addEventListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms the blocker from a wheel event when no pointerover preceded it', () => {
+    // A page rebuilt under a resting cursor delivers wheel events with no
+    // pointerover before them; the volume listener re-arms as the fallback.
+    const { dispatchWheel } = createHarness();
+    const path = freshVolumePath();
+    const control = path[1] as ReturnType<typeof element>;
+
+    dispatchWheel({ deltaY: 100, path });
+
+    expect(control.addEventListener).toHaveBeenCalledTimes(1);
+    expect(control.addEventListener).toHaveBeenCalledWith(
+      'wheel', expect.any(Function), { passive: false },
+    );
+  });
+
+  it('re-arms on the replacement control after Apple rebuilds the player bar', () => {
+    const { dispatchPointerOver } = createHarness();
+    const replacementPath = freshVolumePath();
+    const replacement = replacementPath[1] as ReturnType<typeof element>;
+
+    dispatchPointerOver(freshVolumePath());
+    dispatchPointerOver(replacementPath);
+
+    expect(replacement.addEventListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks the page scroll under the control but leaves Ctrl+zoom alone', () => {
+    const { dispatchPointerOver } = createHarness();
+    const path = freshVolumePath();
+    const control = path[1] as ReturnType<typeof element>;
+    dispatchPointerOver(path);
+    const blocker = control.addEventListener.mock.calls[0][1] as (event: unknown) => void;
+
+    const wheel = { ctrlKey: false, preventDefault: vi.fn() };
+    blocker(wheel);
+    expect(wheel.preventDefault).toHaveBeenCalledTimes(1);
+
+    const zoom = { ctrlKey: true, preventDefault: vi.fn() };
+    blocker(zoom);
+    expect(zoom.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('installs no second wheel or pointerover listener when the script is injected again', () => {
+    const { pointeroverListeners, reinject, wheelListeners } = createHarness();
 
     reinject();
 
     expect(wheelListeners).toHaveLength(1);
+    expect(pointeroverListeners).toHaveLength(1);
   });
 
   it('clears media session position state for a radio stream with no duration', () => {
