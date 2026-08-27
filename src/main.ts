@@ -316,7 +316,11 @@ function loadAssets(): Assets {
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
   const win = new BrowserWindow({
-    title: 'Sidra',
+    // From app.getName(), so the product name in package.json is the one place
+    // it is spelled. A literal here outlived the rename and left every window
+    // manager and status bar reporting the old name, because the
+    // page-title-updated handler below keeps the page from replacing it.
+    title: app.getName(),
     width: MAIN_WINDOW_WIDTH_PX,
     height: MAIN_WINDOW_HEIGHT_PX,
     show: false,

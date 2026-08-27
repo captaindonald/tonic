@@ -240,7 +240,7 @@ function sendActivity(player: Player): void {
     largeImageKey,
     largeImageText,
     smallImageKey: 'sidra_logo',
-    smallImageText: 'Sidra',
+    smallImageText: app.getName(),
     buttons,
   };
 
