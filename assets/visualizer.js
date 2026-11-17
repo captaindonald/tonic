@@ -62,6 +62,11 @@
   /** @type {WeakMap<HTMLMediaElement, MediaStream>} */
   var streams = new WeakMap();
   var captureFailureLogged = false;
+  // Polls in a row that read digital silence from an element that is playing.
+  var silentPolls = 0;
+  var SILENT_POLLS_BEFORE_RECAPTURE = 3;
+  /** @type {Float32Array | null} */
+  var probe = null;
 
   /** @returns {HTMLMediaElement | null} the element currently playing, if any */
   function playingElement() {
@@ -143,6 +148,37 @@
     boundTrack = track;
     if (ctx.state !== 'running') ctx.resume().catch(function () {});
     return true;
+  }
+
+  /**
+   * A bound input that reads nothing but zeros while the element plays has
+   * gone stale in some way the addtrack listener did not catch, which leaves
+   * the bars flat and Retro 3D drawing its idle loops. After about 1.5 s of
+   * that, drop the element's captured stream so the next poll captures afresh.
+   * A genuinely silent gap in a track costs one cheap re-capture per 1.5 s.
+   */
+  function checkForStaleInput() {
+    if (!analyser || !boundElement || boundElement.muted) {
+      silentPolls = 0;
+      return;
+    }
+    if (!probe) probe = new Float32Array(2048);
+    analyser.getFloatTimeDomainData(probe);
+    var peak = 0;
+    for (var i = 0; i < probe.length; i++) {
+      var v = probe[i] < 0 ? -probe[i] : probe[i];
+      if (v > peak) peak = v;
+    }
+    if (peak > 1e-6) {
+      silentPolls = 0;
+      return;
+    }
+    if (++silentPolls < SILENT_POLLS_BEFORE_RECAPTURE) return;
+    silentPolls = 0;
+    var stream = streams.get(boundElement);
+    if (stream) stream.getAudioTracks().forEach(function (t) { t.stop(); });
+    streams.delete(boundElement);
+    boundTrack = null;
   }
 
   // Releases the input and parks the audio thread while nothing is shown.
@@ -799,6 +835,7 @@
       if (state.strip) attachStrip();
       attachButton();
       live = ensureInput();
+      if (live) checkForStaleInput();
       refreshOverlayMeta();
       if (live) wake();
     } catch (e) {

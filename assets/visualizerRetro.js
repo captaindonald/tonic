@@ -324,8 +324,9 @@
           }
         }
       }
-      // A slow automatic gain, so a quiet master still moves the ribbons.
-      var target = Math.min(5, Math.max(0.8, 0.45 / Math.max(peak, 0.02)));
+      // A slow automatic gain, so a quiet intro or master still breaks the
+      // ribbons up; only true silence leaves them as clean loops.
+      var target = Math.min(10, Math.max(0.8, 0.45 / Math.max(peak, 0.01)));
       gain += (target - gain) * 0.05;
       for (var n = 0; n < samples.length; n++) samples[n] *= gain;
     }
