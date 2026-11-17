@@ -51,6 +51,7 @@
       "assets/locales/update.json",
       "assets/musicKitHook.js",
       "assets/navigationBar.js",
+      "assets/visualizer.js",
       "assets/about.html",
       "assets/authFrameFix.js",
       "assets/authStyleFix.css",

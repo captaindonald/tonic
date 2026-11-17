@@ -25,7 +25,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 ## Features
 
-- 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
+- 🎧 **Untouched audio** - playback never passes through an `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - 🎨 **Six bundled themes** - Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, and Solarized - plus a live-reloading `custom.css` escape hatch
 - 📊 **Last.fm scrobbling** - opt-in; connect from the tray and approve Sidra in your browser
 - 🎮 **Discord Rich Presence** - show what you are listening to
@@ -33,6 +33,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
+- 📈 **Visualizer** - a spectrum strip behind the player bar, and a full-window view with the album art; see [Visualizer](#visualizer)
 - 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
 - 🐧 **Linux**:
@@ -82,6 +83,16 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 The **Custom** menu entry only appears when that file exists.
 
 Your chosen theme applies to both Apple Music and Apple Music Classical.
+
+---
+
+## Visualizer
+
+A spectrum strip sits behind the player bar controls in your theme's accent color. Turn it off from the tray **Visualizer** → **Player Bar** checkbox.
+
+For the full-window view, click the bars button beside the volume control, choose **Visualizer** → **Open Full Window** in the tray, or press **Alt+V**. It shows the album art and track over a blurred backdrop, with bars colored from the artwork. Press **Esc**, **Alt+V**, or click anywhere to close it.
+
+The visualizer reads a copy of the stream with `captureStream()`, so playback never passes through it, and the bars do not depend on the volume setting. The analyser renders to no output device, so it adds no second audio stream to PulseAudio or PipeWire. Nothing is drawn while the window is hidden or the music is paused.
 
 ---
 
@@ -228,7 +239,7 @@ I wanted something that just worked. So, I made Sidra.
 
 **Windows followed** at the request of another friend who wanted a decent Apple Music client that was not Cider.
 
-The bonus became clear once everything was working. Wrapping `music.apple.com` directly means none of those failure modes can exist. Apple's audio pipeline, Apple's auth, Apple's UI - Sidra never creates an `AudioContext`. Audio flows untouched through Chromium's media stack to the OS. Authentication cannot drift out of sync with Apple's servers. The interface updates whenever Apple ships a change, automatically.
+The bonus became clear once everything was working. Wrapping `music.apple.com` directly means none of those failure modes can exist. Apple's audio pipeline, Apple's auth, Apple's UI - playback never passes through an `AudioContext`. Audio flows untouched through Chromium's media stack to the OS. Authentication cannot drift out of sync with Apple's servers. The interface updates whenever Apple ships a change, automatically.
 
 *Sidra* is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 

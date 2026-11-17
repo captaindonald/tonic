@@ -4,7 +4,7 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, isTerminalPlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getVisualizerStripEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -14,6 +14,7 @@ import { enable as enableDiscord, disable as disableDiscord } from './integratio
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { sendCommand } from './commandBridge';
+import { openVisualizer, setVisualizerStrip } from './visualizer';
 import { createPauseEdgeTimer } from './pauseTimer';
 import { openExternalUrl } from './utils/openExternal';
 import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
@@ -49,6 +50,7 @@ export type MenuIconKey =
   | 'next'
   | 'volume'
   | 'close-to-tray'
+  | 'visualizer'
   | 'show-window'
   | 'hide-window';
 
@@ -76,6 +78,7 @@ const menuIconFileMap: Partial<Record<MenuIconKey, string>> = {
   'next': 'forward-step',
   'volume': 'volume',
   'close-to-tray': 'toggle-on',
+  'visualizer': 'visualizer',
   'show-window': 'eye',
   'hide-window': 'eye-slash',
 };
@@ -103,6 +106,7 @@ const menuIconSFSymbolMap: Record<MenuIconKey, string> = {
   'next': 'forward.end',
   'volume': 'speaker.wave.2',
   'close-to-tray': 'menubar.dock.rectangle',
+  'visualizer': 'waveform',
   'show-window': 'eye',
   'hide-window': 'eye.slash',
 };
@@ -401,6 +405,38 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   }, ctx);
 }
 
+// The player bar strip is a preference and persists; the full window is an
+// action, so it reads as a plain item rather than a third radio choice. Alt+V
+// is handled in the page by assets/visualizer.js, so the accelerator is shown
+// here and not registered.
+function buildVisualizerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, refresh } = ctx;
+  const icon = getMenuIcon('visualizer');
+  return {
+    label: strings.visualizer,
+    ...(icon ? { icon } : {}),
+    submenu: [
+      {
+        label: strings.visualizerPlayerBar,
+        type: 'checkbox',
+        checked: getVisualizerStripEnabled(),
+        click: (item) => { setVisualizerStrip(item.checked); refresh(); },
+      },
+      {
+        label: strings.visualizerFullWindow,
+        accelerator: 'Alt+V',
+        registerAccelerator: false,
+        click: () => {
+          const mainWin = getMainWindowCallback?.();
+          if (mainWin && !mainWin.isVisible()) mainWin.show();
+          mainWin?.focus();
+          openVisualizer();
+        },
+      },
+    ],
+  };
+}
+
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const currentTheme = resolveTheme();
@@ -650,6 +686,7 @@ function buildContextMenu(tray: Tray): Menu {
     buildDiscordSubmenu(ctx),
     ...(isLastfmConfigured() ? [buildLastfmSubmenu(ctx)] : []),
     buildStyleSubmenu(ctx),
+    buildVisualizerSubmenu(ctx),
     buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
     ...buildUpdateMenuItems(),
     { type: 'separator' },

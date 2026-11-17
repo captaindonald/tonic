@@ -13,6 +13,7 @@ import { initServiceSwitch, routeToMusicService, switchService } from './service
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { initCommandBridge } from './commandBridge';
+import { buildVisualizerScript, setVisualizerTarget } from './visualizer';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -163,6 +164,7 @@ export interface Assets {
   STYLE_FIX_CSS: string;
   authFrameScript: string;
   navBarScript: string;
+  visualizerScript: string;
   hookScript: string;
 }
 
@@ -311,7 +313,8 @@ function loadAssets(): Assets {
     .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
-  return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript };
+  const visualizerScript = fs.readFileSync(getAssetPath('assets', 'visualizer.js'), 'utf-8');
+  return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript, visualizerScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -425,6 +428,16 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
     mainLog.debug('Navigation bar injected');
   } catch (e: unknown) {
     mainLog.warn(`failed to inject navBarScript ${context}:`, e);
+  }
+  // Last, and behind the same host gate as the hook: it reads the page's
+  // media element, and a failure here must cost neither of the scripts above.
+  try {
+    if (isAllowedNavigationUrl(win.webContents.getURL())) {
+      await win.webContents.executeJavaScript(buildVisualizerScript(assets.visualizerScript));
+      mainLog.debug('Visualizer injected');
+    }
+  } catch (e: unknown) {
+    mainLog.warn(`failed to inject visualizerScript ${context}:`, e);
   }
 }
 
@@ -636,6 +649,7 @@ if (gotLock) {
     const winReady = created.winReady;
     initCommandBridge((channel, ...args) => win!.webContents.send(channel, ...args));
     setGetMainWindowCallback(() => win);
+    setVisualizerTarget(() => win?.webContents ?? null);
     initServiceSwitch({
       getTray: () => appTray,
       loadURL: url => {
