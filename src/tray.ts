@@ -4,7 +4,7 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, isTerminalPlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getVisualizerStripEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getVisualizerStripEnabled, getVisualizerStyle, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -14,7 +14,8 @@ import { enable as enableDiscord, disable as disableDiscord } from './integratio
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { sendCommand } from './commandBridge';
-import { openVisualizer, setVisualizerStrip } from './visualizer';
+import { openVisualizer, setVisualizerFullWindowStyle, setVisualizerStrip } from './visualizer';
+import type { VisualizerStyle } from './visualizerStyle';
 import { createPauseEdgeTimer } from './pauseTimer';
 import { openExternalUrl } from './utils/openExternal';
 import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
@@ -405,13 +406,24 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   }, ctx);
 }
 
-// The player bar strip is a preference and persists; the full window is an
-// action, so it reads as a plain item rather than a third radio choice. Alt+V
-// is handled in the page by assets/visualizer.js, so the accelerator is shown
-// here and not registered.
+// The player bar strip is a preference and persists; the radio pair beneath it
+// picks the full-window style; the full window itself is an action, so it reads
+// as a plain item. Alt+V is handled in the page by assets/visualizer.js, so the
+// accelerator is shown here and not registered.
 function buildVisualizerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const icon = getMenuIcon('visualizer');
+  const style = getVisualizerStyle();
+  const styleLabels: Record<VisualizerStyle, string> = {
+    spectrum: strings.visualizerSpectrum,
+    retro: strings.visualizerRetro,
+  };
+  const styleItems = (Object.keys(styleLabels) as VisualizerStyle[]).map(id => ({
+    label: styleLabels[id],
+    type: 'radio' as const,
+    checked: style === id,
+    click: () => { setVisualizerFullWindowStyle(id); refresh(); },
+  }));
   return {
     label: strings.visualizer,
     ...(icon ? { icon } : {}),
@@ -422,6 +434,8 @@ function buildVisualizerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstruct
         checked: getVisualizerStripEnabled(),
         click: (item) => { setVisualizerStrip(item.checked); refresh(); },
       },
+      { type: 'separator' },
+      ...styleItems,
       {
         label: strings.visualizerFullWindow,
         accelerator: 'Alt+V',
