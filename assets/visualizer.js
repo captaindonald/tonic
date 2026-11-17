@@ -68,12 +68,22 @@
   /** @type {Float32Array | null} */
   var probe = null;
 
-  /** @returns {HTMLMediaElement | null} the element currently playing, if any */
+  /**
+   * The element playing the music. Muted elements are skipped: Apple's
+   * animated tiles and artwork are muted <video> elements (browsers autoplay
+   * only muted video) that play only while the window has focus, and they come
+   * before the player's <audio> in document order. Picking one captured a
+   * stream with no audio track, so a focused window on the Home page read
+   * silence and Retro 3D drew its idle loops (confirmed over CDP: 16 muted
+   * videos ahead of the player). Music videos play unmuted, so they still match.
+   *
+   * @returns {HTMLMediaElement | null}
+   */
   function playingElement() {
     var elements = document.querySelectorAll('audio, video');
     for (var i = 0; i < elements.length; i++) {
       var el = /** @type {HTMLMediaElement} */ (elements[i]);
-      if (!el.paused && !el.ended) return el;
+      if (!el.paused && !el.ended && !el.muted) return el;
     }
     return null;
   }
