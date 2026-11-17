@@ -116,6 +116,29 @@ describe('assets/visualizer.js', () => {
   });
 });
 
+describe('choosing the media element', () => {
+  // Apple's Home page puts muted, autoplaying tile videos ahead of the player's
+  // <audio> in document order, and they play only while the window has focus.
+  function mediaElement(tag: string, muted: boolean) {
+    return { tagName: tag, paused: false, ended: false, muted, captureStream: vi.fn(() => ({ getAudioTracks: () => [], addEventListener: vi.fn() })) };
+  }
+
+  it('reads the unmuted player, not a muted tile video playing ahead of it', () => {
+    const tile = mediaElement('VIDEO', true);
+    const player = mediaElement('AUDIO', false);
+    const context = vm.createContext({
+      console: { log: vi.fn(), warn: vi.fn() },
+      document: { querySelector: () => null, querySelectorAll: () => [tile, player], getElementById: () => null },
+      window: { addEventListener: vi.fn() },
+      setInterval: vi.fn(), setTimeout: vi.fn(), clearTimeout: vi.fn(), requestAnimationFrame: vi.fn(),
+      performance: { now: () => 0 },
+    });
+    vm.runInContext(buildVisualizerScript(source, { strip: true, style: 'spectrum', label: 'Visualizer' }), context);
+    expect(tile.captureStream).not.toHaveBeenCalled();
+    expect(player.captureStream).toHaveBeenCalled();
+  });
+});
+
 describe('page calls', () => {
   it('persists the strip setting and hands the page the new config', () => {
     const executeJavaScript = vi.fn(() => Promise.resolve());
