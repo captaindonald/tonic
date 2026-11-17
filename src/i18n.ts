@@ -77,6 +77,9 @@ export const NOT_PLAYING_TEXT: Record<string, string> = trayData.NOT_PLAYING_TEX
 export const BACK_TEXT: Record<string, string> = trayData.BACK_TEXT;
 export const FORWARD_TEXT: Record<string, string> = trayData.FORWARD_TEXT;
 export const RELOAD_TEXT: Record<string, string> = trayData.RELOAD_TEXT;
+export const VISUALIZER_TEXT: Record<string, string> = trayData.VISUALIZER_TEXT;
+export const VISUALIZER_PLAYER_BAR_TEXT: Record<string, string> = trayData.VISUALIZER_PLAYER_BAR_TEXT;
+export const VISUALIZER_FULL_WINDOW_TEXT: Record<string, string> = trayData.VISUALIZER_FULL_WINDOW_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -190,6 +193,9 @@ export interface TrayStrings {
   hideWindow: string;
   showWindow: string;
   closeToTray: string;
+  visualizer: string;
+  visualizerPlayerBar: string;
+  visualizerFullWindow: string;
 }
 
 // Every tray label against the record it resolves from. Typed on keyof
@@ -236,6 +242,9 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   hideWindow: HIDE_WINDOW_TEXT,
   showWindow: SHOW_WINDOW_TEXT,
   closeToTray: CLOSE_TO_TRAY_TEXT,
+  visualizer: VISUALIZER_TEXT,
+  visualizerPlayerBar: VISUALIZER_PLAYER_BAR_TEXT,
+  visualizerFullWindow: VISUALIZER_FULL_WINDOW_TEXT,
 };
 
 // TRAY_TEXT is a Record literal, so excess property checking already rules out

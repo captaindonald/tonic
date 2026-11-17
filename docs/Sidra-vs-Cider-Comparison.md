@@ -7,7 +7,7 @@
 
 ## 1. Executive summary
 
-**If you want audio fidelity and reliability:** Sidra. It passes audio through untouched, never creates an AudioContext, and inherits Apple's own playback pipeline. No double-resampling, no DSP artefacts, no AudioContext suspension stalls.
+**If you want audio fidelity and reliability:** Sidra. It passes audio through untouched, never routes playback through an AudioContext, and inherits Apple's own playback pipeline. No double-resampling, no DSP artefacts, no AudioContext suspension stalls.
 
 **If you want a custom UI with equaliser, visualisations, and themes:** Cider. It has a full-featured replacement interface with audio processing tools, immersive mode, and extensive theming.
 

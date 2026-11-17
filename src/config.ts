@@ -33,6 +33,7 @@ interface StoreSchema {
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
   'closeToTray.enabled': boolean;
+  'visualizer.strip': boolean;
   'lastfm.enabled': boolean;
   'lastfm.sessionKey': string | null;
   'lastfm.username': string | null;
@@ -104,6 +105,14 @@ export function getCloseToTrayEnabled(): boolean {
 
 export function setCloseToTrayEnabled(enabled: boolean): void {
   setConfigValue('closeToTray.enabled', enabled);
+}
+
+export function getVisualizerStripEnabled(): boolean {
+  return getConfigValue('visualizer.strip', true);
+}
+
+export function setVisualizerStripEnabled(enabled: boolean): void {
+  setConfigValue('visualizer.strip', enabled);
 }
 
 export function getDiscordEnabled(): boolean {
