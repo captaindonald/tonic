@@ -4,33 +4,57 @@ import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import type { WebContents } from 'electron';
 
-import { getVisualizerStripEnabled } from '../src/config';
+import { getVisualizerStripEnabled, getVisualizerStyle, setVisualizerStyle } from '../src/config';
+import { isVisualizerStyle } from '../src/visualizerStyle';
 import {
   VISUALIZER_CONFIG_TOKEN,
   buildVisualizerScript,
+  joinVisualizerSources,
   openVisualizer,
+  setVisualizerFullWindowStyle,
   setVisualizerStrip,
   setVisualizerTarget,
 } from '../src/visualizer';
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'assets', 'visualizer.js'), 'utf-8');
+const asset = (name: string) => fs.readFileSync(path.join(__dirname, '..', 'assets', name), 'utf-8');
+const source = joinVisualizerSources(asset('visualizerRetro.js'), asset('visualizer.js'));
 
 describe('buildVisualizerScript', () => {
   it('replaces the config token with the settings as JSON', () => {
-    const script = buildVisualizerScript(source, { strip: false, label: 'Visualisierung' });
+    const script = buildVisualizerScript(source, { strip: false, style: 'retro', label: 'Visualisierung' });
     expect(script).not.toContain(VISUALIZER_CONFIG_TOKEN);
-    expect(script).toContain('{"strip":false,"label":"Visualisierung"}');
+    expect(script).toContain('{"strip":false,"style":"retro","label":"Visualisierung"}');
     expect(() => new vm.Script(script)).not.toThrow();
   });
 
   it('keeps a $ in a translated label literal', () => {
-    const script = buildVisualizerScript(source, { strip: true, label: "$& $' $1" });
+    const script = buildVisualizerScript(source, { strip: true, style: 'spectrum', label: "$& $' $1" });
     expect(script).toContain(JSON.stringify("$& $' $1"));
   });
 
-  it('defaults to the stored strip setting, which starts on', () => {
+  it('defaults to the stored settings: strip on, spectrum style', () => {
     expect(getVisualizerStripEnabled()).toBe(true);
-    expect(buildVisualizerScript(source)).toContain('"strip":true');
+    expect(getVisualizerStyle()).toBe('spectrum');
+    expect(buildVisualizerScript(source)).toContain('"strip":true,"style":"spectrum"');
+  });
+
+  it('puts the retro renderer ahead of the visualizer that looks it up', () => {
+    expect(source.indexOf('__sidraVisualizerRetro = {')).toBeLessThan(source.indexOf('__sidraVisualizer = {'));
+  });
+});
+
+describe('visualizer style setting', () => {
+  it('reads an unknown stored style as spectrum', () => {
+    setVisualizerStyle('bogus' as never);
+    expect(getVisualizerStyle()).toBe('spectrum');
+    setVisualizerStyle('spectrum');
+  });
+
+  it('accepts exactly the known styles', () => {
+    expect(isVisualizerStyle('spectrum')).toBe(true);
+    expect(isVisualizerStyle('retro')).toBe(true);
+    expect(isVisualizerStyle('bars')).toBe(false);
+    expect(isVisualizerStyle(1)).toBe(false);
   });
 });
 
@@ -61,7 +85,7 @@ function createPage() {
     window,
     windowListeners,
     intervals,
-    run: (config: { strip: boolean; label: string }) =>
+    run: (config: { strip: boolean; style: 'spectrum' | 'retro'; label: string }) =>
       vm.runInContext(buildVisualizerScript(source, config), context),
   };
 }
@@ -69,25 +93,25 @@ function createPage() {
 describe('assets/visualizer.js', () => {
   it('exposes the control object the main process calls into', () => {
     const page = createPage();
-    page.run({ strip: true, label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
     const api = page.window.__sidraVisualizer as Record<string, unknown>;
     expect(Object.keys(api).sort()).toEqual(['close', 'configure', 'open', 'toggle']);
   });
 
   it('reconfigures the running copy on re-injection instead of starting a second one', () => {
     const page = createPage();
-    page.run({ strip: true, label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
     const api = page.window.__sidraVisualizer as { configure: (c: unknown) => void };
     const configure = vi.spyOn(api, 'configure');
-    page.run({ strip: false, label: 'Visualizer' });
-    expect(configure).toHaveBeenCalledWith({ strip: false, label: 'Visualizer' });
+    page.run({ strip: false, style: 'spectrum', label: 'Visualizer' });
+    expect(configure).toHaveBeenCalledWith({ strip: false, style: 'spectrum', label: 'Visualizer' });
     expect(page.windowListeners).toEqual(['keydown']);
     expect(page.intervals).toHaveLength(1);
   });
 
   it('survives a page with no player bar and no media element', () => {
     const page = createPage();
-    page.run({ strip: true, label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
     expect(() => page.intervals[0]()).not.toThrow();
   });
 });
@@ -100,6 +124,15 @@ describe('page calls', () => {
     expect(getVisualizerStripEnabled()).toBe(false);
     expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('configure({"strip":false'));
     setVisualizerStrip(true);
+  });
+
+  it('persists the full-window style and switches an open view in place', () => {
+    const executeJavaScript = vi.fn(() => Promise.resolve());
+    setVisualizerTarget(() => ({ isDestroyed: () => false, executeJavaScript }) as unknown as WebContents);
+    setVisualizerFullWindowStyle('retro');
+    expect(getVisualizerStyle()).toBe('retro');
+    expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('"style":"retro"'));
+    setVisualizerFullWindowStyle('spectrum');
   });
 
   it('does nothing without a window', () => {

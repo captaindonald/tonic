@@ -21,6 +21,7 @@ vi.mock('../src/config', () => ({
   getCloseToTrayEnabled: vi.fn(() => false),
   setCloseToTrayEnabled: vi.fn(),
   getVisualizerStripEnabled: vi.fn(() => true),
+  getVisualizerStyle: vi.fn(() => 'spectrum'),
   setVisualizerStripEnabled: vi.fn(),
   getMusicService: vi.fn(() => 'music'),
   setMusicService: vi.fn(),
@@ -70,6 +71,8 @@ const mockTrayStrings: TrayStrings = {
   visualizer: 'Visualizer',
   visualizerPlayerBar: 'Player Bar',
   visualizerFullWindow: 'Open Full Window',
+  visualizerSpectrum: 'Spectrum',
+  visualizerRetro: 'Retro 3D',
 };
 
 // Expected menu label per registry page id. Typed over the union, so a new page
@@ -102,6 +105,7 @@ vi.mock('../src/integrations/lastfm', () => ({
 vi.mock('../src/visualizer', () => ({
   openVisualizer: vi.fn(),
   setVisualizerStrip: vi.fn(),
+  setVisualizerFullWindowStyle: vi.fn(),
 }));
 
 vi.mock('../src/update', () => ({
@@ -131,9 +135,9 @@ vi.mock('../src/paths', () => ({
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
 import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback, type MenuIconKey } from '../src/tray';
-import { getCloseToTrayEnabled, getVisualizerStripEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
+import { getCloseToTrayEnabled, getVisualizerStripEnabled, getVisualizerStyle, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
-import { openVisualizer, setVisualizerStrip } from '../src/visualizer';
+import { openVisualizer, setVisualizerFullWindowStyle, setVisualizerStrip } from '../src/visualizer';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
 import { applyTheme, hasCustomCss, hasCustomTheme, resolveTheme } from '../src/theme';
@@ -1108,6 +1112,18 @@ describe('createTray - menu template inspection', () => {
       expect(item.type).toBe('checkbox');
       (item.click as Function)({ checked: false });
       expect(setVisualizerStrip).toHaveBeenCalledWith(false);
+    });
+
+    it('offers the full-window styles as a radio pair checked from the stored style', () => {
+      vi.mocked(getVisualizerStyle).mockReturnValue('retro');
+      const radios = visualizerItems().filter(i => i.type === 'radio');
+      expect(radios.map(i => [i.label, i.checked])).toEqual([['Spectrum', false], ['Retro 3D', true]]);
+    });
+
+    it('stores the chosen full-window style', () => {
+      const retro = visualizerItems().find(i => i.label === 'Retro 3D')!;
+      (retro.click as Function)();
+      expect(setVisualizerFullWindowStyle).toHaveBeenCalledWith('retro');
     });
 
     it('shows the Alt+V hint without registering it, since the page handles the key', () => {

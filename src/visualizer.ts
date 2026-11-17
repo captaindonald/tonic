@@ -5,8 +5,9 @@
  */
 import type { WebContents } from 'electron';
 import log from 'electron-log/main';
-import { getVisualizerStripEnabled, setVisualizerStripEnabled } from './config';
+import { getVisualizerStripEnabled, getVisualizerStyle, setVisualizerStripEnabled, setVisualizerStyle } from './config';
 import { getTrayStrings } from './i18n';
+import type { VisualizerStyle } from './visualizerStyle';
 
 const visualizerLog = log.scope('visualizer');
 
@@ -19,6 +20,7 @@ export const VISUALIZER_CONFIG_TOKEN = '__SIDRA_VISUALIZER_CONFIG__';
 
 export interface VisualizerConfig {
   strip: boolean;
+  style: VisualizerStyle;
   label: string;
 }
 
@@ -29,7 +31,16 @@ export function setVisualizerTarget(callback: () => WebContents | null): void {
 }
 
 export function currentVisualizerConfig(): VisualizerConfig {
-  return { strip: getVisualizerStripEnabled(), label: getTrayStrings().visualizer };
+  return { strip: getVisualizerStripEnabled(), style: getVisualizerStyle(), label: getTrayStrings().visualizer };
+}
+
+/**
+ * The page script as injected: the Retro 3D renderer first, because the
+ * visualizer looks it up on `window` when the overlay opens, then the
+ * visualizer itself. Read once at startup by loadAssets() in src/main.ts.
+ */
+export function joinVisualizerSources(retro: string, visualizer: string): string {
+  return `${retro}\n${visualizer}`;
 }
 
 /**
@@ -56,6 +67,12 @@ function callInPage(call: VisualizerCall): void {
 
 export function setVisualizerStrip(enabled: boolean): void {
   setVisualizerStripEnabled(enabled);
+  callInPage(`configure(${JSON.stringify(currentVisualizerConfig())})`);
+}
+
+// An open full-window view switches style in place.
+export function setVisualizerFullWindowStyle(style: VisualizerStyle): void {
+  setVisualizerStyle(style);
   callInPage(`configure(${JSON.stringify(currentVisualizerConfig())})`);
 }
 

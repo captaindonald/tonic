@@ -33,7 +33,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
-- 📈 **Visualizer** - a spectrum strip behind the player bar, and a full-window view with the album art; see [Visualizer](#visualizer)
+- 📈 **Visualizer** - a spectrum strip behind the player bar, and a full-window view in two styles: album art with spectrum bars, or Retro 3D; see [Visualizer](#visualizer)
 - 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
 - 🐧 **Linux**:
@@ -90,7 +90,10 @@ Your chosen theme applies to both Apple Music and Apple Music Classical.
 
 A spectrum strip sits behind the player bar controls in your theme's accent color. Turn it off from the tray **Visualizer** → **Player Bar** checkbox.
 
-For the full-window view, click the bars button beside the volume control, choose **Visualizer** → **Open Full Window** in the tray, or press **Alt+V**. It shows the album art and track over a blurred backdrop, with bars colored from the artwork. Press **Esc**, **Alt+V**, or click anywhere to close it.
+For the full-window view, click the bars button beside the volume control, choose **Visualizer** → **Open Full Window** in the tray, or press **Alt+V**. Press **Esc**, **Alt+V**, or click anywhere to close it. Pick its style in the same tray submenu:
+
+- **Spectrum** shows the album art and track over a blurred backdrop, with bars colored from the artwork.
+- **Retro 3D** is a throwback to early-2000s desktop visualizers: glowing 3D ribbons traced from the waveform, swept outwards by swirling trails, cycling through the colors, with starbursts on the beat. The track appears in a corner for a few seconds when it changes. It needs WebGL 2 and falls back to Spectrum without it.
 
 The visualizer reads a copy of the stream with `captureStream()`, so playback never passes through it, and the bars do not depend on the volume setting. The analyser renders to no output device, so it adds no second audio stream to PulseAudio or PipeWire. Nothing is drawn while the window is hidden or the music is paused.
 

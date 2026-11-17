@@ -8,6 +8,7 @@
 import { Conf } from 'electron-conf/main';
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
+import { isVisualizerStyle, type VisualizerStyle } from './visualizerStyle';
 import {
   DEFAULT_SERVICE_ID,
   isMusicServiceId,
@@ -34,6 +35,7 @@ interface StoreSchema {
   'discord.enabled': boolean;
   'closeToTray.enabled': boolean;
   'visualizer.strip': boolean;
+  'visualizer.style': VisualizerStyle;
   'lastfm.enabled': boolean;
   'lastfm.sessionKey': string | null;
   'lastfm.username': string | null;
@@ -113,6 +115,17 @@ export function getVisualizerStripEnabled(): boolean {
 
 export function setVisualizerStripEnabled(enabled: boolean): void {
   setConfigValue('visualizer.strip', enabled);
+}
+
+// An unknown stored value (a style removed in a later version, or a hand edit)
+// reads as the default rather than reaching the page.
+export function getVisualizerStyle(): VisualizerStyle {
+  const stored: unknown = getConfigValue('visualizer.style', 'spectrum');
+  return isVisualizerStyle(stored) ? stored : 'spectrum';
+}
+
+export function setVisualizerStyle(style: VisualizerStyle): void {
+  setConfigValue('visualizer.style', style);
 }
 
 export function getDiscordEnabled(): boolean {

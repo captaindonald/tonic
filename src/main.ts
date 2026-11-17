@@ -13,7 +13,7 @@ import { initServiceSwitch, routeToMusicService, switchService } from './service
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { initCommandBridge } from './commandBridge';
-import { buildVisualizerScript, setVisualizerTarget } from './visualizer';
+import { buildVisualizerScript, joinVisualizerSources, setVisualizerTarget } from './visualizer';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -313,7 +313,10 @@ function loadAssets(): Assets {
     .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
-  const visualizerScript = fs.readFileSync(getAssetPath('assets', 'visualizer.js'), 'utf-8');
+  const visualizerScript = joinVisualizerSources(
+    fs.readFileSync(getAssetPath('assets', 'visualizerRetro.js'), 'utf-8'),
+    fs.readFileSync(getAssetPath('assets', 'visualizer.js'), 'utf-8'),
+  );
   return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript, visualizerScript };
 }
 

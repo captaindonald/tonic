@@ -52,6 +52,7 @@
       "assets/musicKitHook.js",
       "assets/navigationBar.js",
       "assets/visualizer.js",
+      "assets/visualizerRetro.js",
       "assets/about.html",
       "assets/authFrameFix.js",
       "assets/authStyleFix.css",

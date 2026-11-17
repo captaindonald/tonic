@@ -11,7 +11,7 @@
   // Not standalone-executable JavaScript: buildVisualizerScript() in
   // src/visualizer.ts replaces this bare token with the current settings as
   // JSON on every injection, and exports the spelling as VISUALIZER_CONFIG_TOKEN.
-  /** @type {{ strip: boolean, label: string }} */
+  /** @type {{ strip: boolean, style: string, label: string }} */
   var CONFIG = __SIDRA_VISUALIZER_CONFIG__;
 
   // A re-injection on SPA navigation hands the running instance the current
@@ -40,6 +40,7 @@
 
   var state = {
     strip: false,
+    style: 'spectrum',
     label: 'Visualizer',
     overlayOpen: false,
   };
@@ -425,9 +426,17 @@
 
   // --- Full-window overlay ----------------------------------------------------
 
-  /** @type {{ root: HTMLElement, backdrop: HTMLElement, art: HTMLImageElement, title: HTMLElement, subtitle: HTMLElement, canvas: HTMLCanvasElement } | null} */
+  /** @type {{ root: HTMLElement, backdrop: HTMLElement, content: HTMLElement, art: HTMLImageElement, title: HTMLElement, subtitle: HTMLElement, canvas: HTMLCanvasElement, retroCanvas: HTMLCanvasElement, info: HTMLElement, infoTitle: HTMLElement, infoSubtitle: HTMLElement } | null} */
   var overlay = null;
   var overlayMeter = null;
+  /** @type {{ frame: (input: object) => void, destroy: () => void } | null} */
+  var retro = null;
+  var retroMeter = null;
+  /** @type {Float32Array | null} */
+  var waveform = null;
+  var retroFailureLogged = false;
+  var infoTimer = 0;
+  var INFO_MS = 6000;
   var overlayTrackId = '';
   var overlayColours = [];
   var cursorTimer = 0;
@@ -517,12 +526,101 @@
     content.appendChild(title);
     content.appendChild(subtitle);
     content.appendChild(canvas);
+
+    // Retro 3D: a full-bleed WebGL canvas, with the track shown in a corner
+    // for a few seconds when it changes, in the Verdana of the era.
+    var retroCanvas = document.createElement('canvas');
+    retroCanvas.setAttribute('style', 'position: absolute; inset: 0; width: 100%; height: 100%; display: none;');
+
+    var info = document.createElement('div');
+    info.setAttribute('style', [
+      'position: absolute',
+      'left: 4vw',
+      'bottom: 5vh',
+      'max-width: 70vw',
+      'display: none',
+      'opacity: 0',
+      'transition: opacity 900ms ease',
+      'font-family: Verdana, "DejaVu Sans", Tahoma, sans-serif',
+      'text-shadow: 0 0 8px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9)',
+    ].join('; '));
+    var infoTitle = document.createElement('div');
+    infoTitle.setAttribute('style', 'font-size: clamp(16px, 2.6vh, 34px); font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+    var infoSubtitle = document.createElement('div');
+    infoSubtitle.setAttribute('style', 'font-size: clamp(12px, 1.8vh, 22px); opacity: 0.8; margin-top: 0.5vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+    info.appendChild(infoTitle);
+    info.appendChild(infoSubtitle);
+
     root.appendChild(backdrop);
     root.appendChild(content);
+    root.appendChild(retroCanvas);
+    root.appendChild(info);
 
     root.addEventListener('click', closeOverlay);
-    root.addEventListener('mousemove', showCursorBriefly);
-    return { root: root, backdrop: backdrop, art: art, title: title, subtitle: subtitle, canvas: canvas };
+    root.addEventListener('mousemove', function () {
+      showCursorBriefly();
+      showInfoBriefly();
+    });
+    return {
+      root: root, backdrop: backdrop, content: content, art: art, title: title, subtitle: subtitle, canvas: canvas,
+      retroCanvas: retroCanvas, info: info, infoTitle: infoTitle, infoSubtitle: infoSubtitle,
+    };
+  }
+
+  function showInfoBriefly() {
+    if (!overlay || !retro) return;
+    overlay.info.style.opacity = '1';
+    clearTimeout(infoTimer);
+    infoTimer = setTimeout(function () {
+      if (overlay) overlay.info.style.opacity = '0';
+    }, INFO_MS);
+  }
+
+  // destroy() loses the WebGL context, and a canvas hands a lost context back
+  // to every later getContext() call, so a switch back to Retro 3D in the same
+  // open overlay needs a fresh canvas or it falls back to the spectrum.
+  function destroyRetro() {
+    if (retro) {
+      retro.destroy();
+      if (overlay) {
+        var fresh = /** @type {HTMLCanvasElement} */ (overlay.retroCanvas.cloneNode(false));
+        overlay.retroCanvas.replaceWith(fresh);
+        overlay.retroCanvas = fresh;
+      }
+    }
+    retro = null;
+    retroMeter = null;
+    clearTimeout(infoTimer);
+  }
+
+  /**
+   * Show the chosen style in the open overlay. Retro 3D needs WebGL2 and
+   * assets/visualizerRetro.js; without either it falls back to the spectrum
+   * rather than opening onto a black screen.
+   */
+  function applyOverlayStyle() {
+    if (!overlay) return;
+    var wantRetro = state.style === 'retro';
+    if (wantRetro && !retro) {
+      var factory = window.__sidraVisualizerRetro;
+      try {
+        retro = factory ? factory.create(overlay.retroCanvas) : null;
+      } catch (e) {
+        retro = null;
+        if (!retroFailureLogged) {
+          console.warn(LOG, 'retro renderer failed:', e);
+          retroFailureLogged = true;
+        }
+      }
+    } else if (!wantRetro && retro) {
+      destroyRetro();
+    }
+    var showRetro = !!retro;
+    overlay.retroCanvas.style.display = showRetro ? 'block' : 'none';
+    overlay.info.style.display = showRetro ? 'block' : 'none';
+    overlay.backdrop.style.display = showRetro ? 'none' : 'block';
+    overlay.content.style.display = showRetro ? 'none' : 'flex';
+    if (showRetro) showInfoBriefly();
   }
 
   function showCursorBriefly() {
@@ -542,6 +640,9 @@
     overlayTrackId = id;
     overlay.title.textContent = np ? np.title : '';
     overlay.subtitle.textContent = np ? np.subtitle : '';
+    overlay.infoTitle.textContent = np ? np.title : '';
+    overlay.infoSubtitle.textContent = np ? np.subtitle : '';
+    showInfoBriefly();
     overlayColours = np ? np.colours : [];
     if (np && np.artwork) {
       overlay.art.src = np.artwork;
@@ -559,8 +660,9 @@
     state.overlayOpen = true;
     overlay = buildOverlay();
     overlayTrackId = '\u0000';
-    refreshOverlayMeta();
     document.body.appendChild(overlay.root);
+    applyOverlayStyle();
+    refreshOverlayMeta();
     requestAnimationFrame(function () {
       if (overlay) overlay.root.style.opacity = '1';
     });
@@ -573,6 +675,7 @@
     state.overlayOpen = false;
     clearTimeout(cursorTimer);
     var root = overlay && overlay.root;
+    destroyRetro();
     overlay = null;
     overlayMeter = null;
     if (root) {
@@ -587,8 +690,30 @@
     else openOverlay();
   }
 
+  // Retro 3D keeps animating while paused: its idle drift is part of the look,
+  // and it only runs while the overlay is open in the foreground.
+  function drawRetro(dt, now, live) {
+    if (!retroMeter) retroMeter = createMeter(3);
+    stepMeter(retroMeter, live, dt, now);
+    var wave = null;
+    if (live) {
+      if (!waveform || waveform.length !== analyser.fftSize) waveform = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(waveform);
+      wave = waveform;
+    }
+    retro.frame({
+      dt: dt,
+      wave: wave,
+      bass: retroMeter.level[0],
+      mid: retroMeter.level[1],
+      treble: retroMeter.level[2],
+    });
+    return true;
+  }
+
   function drawOverlay(dt, now, live) {
     if (!overlay) return false;
+    if (retro) return drawRetro(dt, now, live);
     var canvas = overlay.canvas;
     var dpr = fitCanvas(canvas);
     var w = canvas.width;
@@ -684,6 +809,8 @@
   function configure(config) {
     state.label = typeof config.label === 'string' && config.label ? config.label : state.label;
     state.strip = !!config.strip;
+    state.style = config.style === 'retro' ? 'retro' : 'spectrum';
+    applyOverlayStyle();
     if (state.strip) {
       attachStrip();
     } else {

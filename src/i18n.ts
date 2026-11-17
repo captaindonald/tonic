@@ -80,6 +80,8 @@ export const RELOAD_TEXT: Record<string, string> = trayData.RELOAD_TEXT;
 export const VISUALIZER_TEXT: Record<string, string> = trayData.VISUALIZER_TEXT;
 export const VISUALIZER_PLAYER_BAR_TEXT: Record<string, string> = trayData.VISUALIZER_PLAYER_BAR_TEXT;
 export const VISUALIZER_FULL_WINDOW_TEXT: Record<string, string> = trayData.VISUALIZER_FULL_WINDOW_TEXT;
+export const VISUALIZER_SPECTRUM_TEXT: Record<string, string> = trayData.VISUALIZER_SPECTRUM_TEXT;
+export const VISUALIZER_RETRO_TEXT: Record<string, string> = trayData.VISUALIZER_RETRO_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -196,6 +198,8 @@ export interface TrayStrings {
   visualizer: string;
   visualizerPlayerBar: string;
   visualizerFullWindow: string;
+  visualizerSpectrum: string;
+  visualizerRetro: string;
 }
 
 // Every tray label against the record it resolves from. Typed on keyof
@@ -245,6 +249,8 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   visualizer: VISUALIZER_TEXT,
   visualizerPlayerBar: VISUALIZER_PLAYER_BAR_TEXT,
   visualizerFullWindow: VISUALIZER_FULL_WINDOW_TEXT,
+  visualizerSpectrum: VISUALIZER_SPECTRUM_TEXT,
+  visualizerRetro: VISUALIZER_RETRO_TEXT,
 };
 
 // TRAY_TEXT is a Record literal, so excess property checking already rules out
