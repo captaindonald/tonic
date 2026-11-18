@@ -11,9 +11,17 @@
 (function () {
   if (window.__sidraVisualizerRetro) return;
 
-  // The feedback buffer is capped at this many pixels and stretched to fit,
-  // so a 5K window costs the same as a 1080p one and the glow stays soft.
-  var MAX_PIXELS = 2200000;
+  // The feedback buffer starts at the window's native resolution, so a 5K
+  // screen gets 5K detail; every size below is in buffer pixels, so the look
+  // is the same at any resolution, only sharper. A GPU that cannot hold
+  // MIN_FPS steps the buffer down towards FLOOR_PIXELS (about 1080p, where it
+  // was capped before) and stretches it to fit.
+  var FLOOR_PIXELS = 2200000;
+  var MIN_FPS = 45;
+  var STEP_DOWN = 0.7;
+  // Frames are timed over this window, starting this long after a resize.
+  var MEASURE_S = 2;
+  var SETTLE_S = 1;
   var RIBBONS = 4;
   var POINTS = 1100;
   // Samples averaged into one ribbon point, and the extra points blended into
@@ -270,11 +278,21 @@
       targets = [null, null];
     }
 
+    var maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    var maxViewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    var maxW = Math.min(maxTexture, maxViewport[0]);
+    var maxH = Math.min(maxTexture, maxViewport[1]);
+    // The pixel budget the GPU has kept up with; Infinity means native.
+    var budget = Infinity;
+    var sinceResize = 0;
+    var measured = 0;
+    var frames = 0;
+
     function fit() {
       var dpr = window.devicePixelRatio || 1;
       var cw = Math.max(1, canvas.clientWidth * dpr);
       var ch = Math.max(1, canvas.clientHeight * dpr);
-      var scale = Math.min(1, Math.sqrt(MAX_PIXELS / (cw * ch)));
+      var scale = Math.min(1, Math.sqrt(budget / (cw * ch)), maxW / cw, maxH / ch);
       var w = Math.max(1, Math.round(cw * scale));
       var h = Math.max(1, Math.round(ch * scale));
       if (w === width && h === height) return;
@@ -284,6 +302,30 @@
       canvas.height = h;
       freeTargets();
       targets = [makeTarget(w, h), makeTarget(w, h)];
+      sinceResize = 0;
+      measured = 0;
+      frames = 0;
+    }
+
+    /**
+     * Step the buffer down when the frame rate stays under MIN_FPS for a whole
+     * measuring window. It never steps back up within one opening of the
+     * overlay; the next opening starts at native again.
+     * @param {number} dt the frame time, before frame() clamps it
+     */
+    function adaptResolution(dt) {
+      sinceResize += dt;
+      if (sinceResize < SETTLE_S || width * height <= FLOOR_PIXELS) return;
+      measured += dt;
+      frames++;
+      if (measured < MEASURE_S) return;
+      var fps = frames / measured;
+      measured = 0;
+      frames = 0;
+      if (fps >= MIN_FPS) return;
+      budget = Math.max(FLOOR_PIXELS, width * height * STEP_DOWN);
+      console.info('Sidra visualizer: Retro 3D at ' + fps.toFixed(0) + ' fps, stepping down to '
+        + (budget / 1e6).toFixed(1) + ' MP');
     }
 
     var time = 0;
@@ -332,6 +374,7 @@
     }
 
     function frame(input) {
+      adaptResolution(input.dt);
       fit();
       var dt = Math.min(0.1, Math.max(0.001, input.dt));
       var f = dt * 60;

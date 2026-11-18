@@ -4,11 +4,12 @@ import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import type { WebContents } from 'electron';
 
-import { getVisualizerStripEnabled, getVisualizerStyle, setVisualizerStyle } from '../src/config';
-import { isVisualizerStyle } from '../src/visualizerStyle';
+import { getVisualizerDelayMs, getVisualizerStripEnabled, getVisualizerStyle, setVisualizerDelayMs, setVisualizerStyle } from '../src/config';
+import { VISUALIZER_DELAY_DEFAULT_MS, VISUALIZER_DELAY_MAX_MS, clampVisualizerDelay, isVisualizerStyle } from '../src/visualizerStyle';
 import {
   VISUALIZER_CONFIG_TOKEN,
   buildVisualizerScript,
+  handleVisualizerDelay,
   joinVisualizerSources,
   openVisualizer,
   setVisualizerFullWindowStyle,
@@ -21,14 +22,14 @@ const source = joinVisualizerSources(asset('visualizerRetro.js'), asset('visuali
 
 describe('buildVisualizerScript', () => {
   it('replaces the config token with the settings as JSON', () => {
-    const script = buildVisualizerScript(source, { strip: false, style: 'retro', label: 'Visualisierung' });
+    const script = buildVisualizerScript(source, { strip: false, style: 'retro', delayMs: 50, label: 'Visualisierung' });
     expect(script).not.toContain(VISUALIZER_CONFIG_TOKEN);
-    expect(script).toContain('{"strip":false,"style":"retro","label":"Visualisierung"}');
+    expect(script).toContain('{"strip":false,"style":"retro","delayMs":50,"label":"Visualisierung"}');
     expect(() => new vm.Script(script)).not.toThrow();
   });
 
   it('keeps a $ in a translated label literal', () => {
-    const script = buildVisualizerScript(source, { strip: true, style: 'spectrum', label: "$& $' $1" });
+    const script = buildVisualizerScript(source, { strip: true, style: 'spectrum', delayMs: 50, label: "$& $' $1" });
     expect(script).toContain(JSON.stringify("$& $' $1"));
   });
 
@@ -55,6 +56,43 @@ describe('visualizer style setting', () => {
     expect(isVisualizerStyle('retro')).toBe(true);
     expect(isVisualizerStyle('bars')).toBe(false);
     expect(isVisualizerStyle(1)).toBe(false);
+  });
+});
+
+describe('visualizer sync delay', () => {
+  it('defaults to the measured lead and reaches the page with the other settings', () => {
+    expect(getVisualizerDelayMs()).toBe(VISUALIZER_DELAY_DEFAULT_MS);
+    expect(buildVisualizerScript(source)).toContain(`"delayMs":${VISUALIZER_DELAY_DEFAULT_MS}`);
+  });
+
+  it('clamps to whole milliseconds in range and refuses anything that is not a number', () => {
+    expect(clampVisualizerDelay(42.4)).toBe(42);
+    expect(clampVisualizerDelay(-10)).toBe(0);
+    expect(clampVisualizerDelay(99999)).toBe(VISUALIZER_DELAY_MAX_MS);
+    expect(clampVisualizerDelay(Number.NaN)).toBeNull();
+    expect(clampVisualizerDelay(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(clampVisualizerDelay('80')).toBeNull();
+    expect(clampVisualizerDelay(undefined)).toBeNull();
+  });
+
+  it('reads a hand-edited stored value back clamped, and a non-number as the default', () => {
+    setVisualizerDelayMs(9000);
+    expect(getVisualizerDelayMs()).toBe(VISUALIZER_DELAY_MAX_MS);
+    setVisualizerDelayMs('soon' as never);
+    expect(getVisualizerDelayMs()).toBe(VISUALIZER_DELAY_DEFAULT_MS);
+    setVisualizerDelayMs(VISUALIZER_DELAY_DEFAULT_MS);
+  });
+
+  it('stores what the page sends, and ignores a payload that is not a number', () => {
+    handleVisualizerDelay(80);
+    expect(getVisualizerDelayMs()).toBe(80);
+    handleVisualizerDelay({ ms: 10 });
+    expect(getVisualizerDelayMs()).toBe(80);
+    handleVisualizerDelay(VISUALIZER_DELAY_DEFAULT_MS);
+  });
+
+  it('keeps the page limits in step with the main process', () => {
+    expect(asset('visualizer.js')).toContain(`var DELAY_MAX_MS = ${VISUALIZER_DELAY_MAX_MS};`);
   });
 });
 
@@ -85,7 +123,7 @@ function createPage() {
     window,
     windowListeners,
     intervals,
-    run: (config: { strip: boolean; style: 'spectrum' | 'retro'; label: string }) =>
+    run: (config: { strip: boolean; style: 'spectrum' | 'retro'; delayMs: number; label: string }) =>
       vm.runInContext(buildVisualizerScript(source, config), context),
   };
 }
@@ -93,25 +131,25 @@ function createPage() {
 describe('assets/visualizer.js', () => {
   it('exposes the control object the main process calls into', () => {
     const page = createPage();
-    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', delayMs: 50, label: 'Visualizer' });
     const api = page.window.__sidraVisualizer as Record<string, unknown>;
     expect(Object.keys(api).sort()).toEqual(['close', 'configure', 'open', 'toggle']);
   });
 
   it('reconfigures the running copy on re-injection instead of starting a second one', () => {
     const page = createPage();
-    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', delayMs: 50, label: 'Visualizer' });
     const api = page.window.__sidraVisualizer as { configure: (c: unknown) => void };
     const configure = vi.spyOn(api, 'configure');
-    page.run({ strip: false, style: 'spectrum', label: 'Visualizer' });
-    expect(configure).toHaveBeenCalledWith({ strip: false, style: 'spectrum', label: 'Visualizer' });
+    page.run({ strip: false, style: 'spectrum', delayMs: 50, label: 'Visualizer' });
+    expect(configure).toHaveBeenCalledWith({ strip: false, style: 'spectrum', delayMs: 50, label: 'Visualizer' });
     expect(page.windowListeners).toEqual(['keydown']);
     expect(page.intervals).toHaveLength(1);
   });
 
   it('survives a page with no player bar and no media element', () => {
     const page = createPage();
-    page.run({ strip: true, style: 'spectrum', label: 'Visualizer' });
+    page.run({ strip: true, style: 'spectrum', delayMs: 50, label: 'Visualizer' });
     expect(() => page.intervals[0]()).not.toThrow();
   });
 });
@@ -133,7 +171,7 @@ describe('choosing the media element', () => {
       setInterval: vi.fn(), setTimeout: vi.fn(), clearTimeout: vi.fn(), requestAnimationFrame: vi.fn(),
       performance: { now: () => 0 },
     });
-    vm.runInContext(buildVisualizerScript(source, { strip: true, style: 'spectrum', label: 'Visualizer' }), context);
+    vm.runInContext(buildVisualizerScript(source, { strip: true, style: 'spectrum', delayMs: 50, label: 'Visualizer' }), context);
     expect(tile.captureStream).not.toHaveBeenCalled();
     expect(player.captureStream).toHaveBeenCalled();
   });

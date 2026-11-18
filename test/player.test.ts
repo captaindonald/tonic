@@ -397,7 +397,8 @@ describe('Channel contract', () => {
       | 'volumeDidChange'
       | 'nav:back'
       | 'nav:forward'
-      | 'nav:reload';
+      | 'nav:reload'
+      | 'visualizer:delay';
 
     expectTypeOf<SendChannel>().toEqualTypeOf<ExpectedSend>();
   });

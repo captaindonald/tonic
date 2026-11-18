@@ -28,6 +28,7 @@ const SEND_CHANNELS = channelSet<SendChannel>({
   'nav:back': true,
   'nav:forward': true,
   'nav:reload': true,
+  'visualizer:delay': true,
 });
 
 // Channels the main process is allowed to send to the renderer.

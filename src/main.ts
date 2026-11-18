@@ -13,7 +13,7 @@ import { initServiceSwitch, routeToMusicService, switchService } from './service
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { initCommandBridge } from './commandBridge';
-import { buildVisualizerScript, joinVisualizerSources, setVisualizerTarget } from './visualizer';
+import { buildVisualizerScript, handleVisualizerDelay, joinVisualizerSources, setVisualizerTarget } from './visualizer';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -235,12 +235,14 @@ function setupApplicationMenu(): void {
 }
 
 // The renderer→main channels split by owner: the nav: prefix is the navigation
-// bar's namespace, and every other channel is a MusicKit event for the Player.
+// bar's namespace, visualizer: is assets/visualizer.js, and every other channel
+// is a MusicKit event for the Player.
 // Each table below is a total record over its half, so a channel renamed in
 // src/types/hook.d.ts and a channel added there with no listener both fail tsc
 // here rather than compiling on and never firing.
 type NavSendChannel = Extract<SendChannel, `nav:${string}`>;
-type PlayerSendChannel = Exclude<SendChannel, NavSendChannel>;
+type VisualizerSendChannel = Extract<SendChannel, `visualizer:${string}`>;
+type PlayerSendChannel = Exclude<SendChannel, NavSendChannel | VisualizerSendChannel>;
 type SendListener = Parameters<typeof ipcMain.on>[1];
 
 // Object.keys() preserves insertion order, so listeners register in the order
@@ -653,6 +655,9 @@ if (gotLock) {
     initCommandBridge((channel, ...args) => win!.webContents.send(channel, ...args));
     setGetMainWindowCallback(() => win);
     setVisualizerTarget(() => win?.webContents ?? null);
+    onSendChannels<VisualizerSendChannel>({
+      'visualizer:delay': (_event, data) => handleVisualizerDelay(data),
+    });
     initServiceSwitch({
       getTray: () => appTray,
       loadURL: url => {
