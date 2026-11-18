@@ -30,6 +30,8 @@
   var SEAM = 64;
   var RIBBON_OFFSET = 256;
   var SPARKS = 260;
+  // The share of the trails kept per 60th of a second.
+  var FADE = 0.9;
   var CAMERA = 2.6;
   var FOCAL = 2.2;
 
@@ -53,13 +55,41 @@
     'uniform float uTime;',
     'uniform float uWarp;',
     'uniform float uDrift;',
+    // Catmull-Rom in 9 bilinear taps. The buffer is resampled every frame, and
+    // a plain bilinear fetch blurs it a little each time, which adds up to a
+    // visible softness at 165 Hz; Catmull-Rom keeps the trails crisp.
+    'vec3 sharpSample(vec2 uv) {',
+    '  vec2 size = vec2(textureSize(uPrev, 0));',
+    '  vec2 pos = uv * size;',
+    '  vec2 t1 = floor(pos - 0.5) + 0.5;',
+    '  vec2 f = pos - t1;',
+    '  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));',
+    '  vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);',
+    '  vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));',
+    '  vec2 w3 = f * f * (-0.5 + 0.5 * f);',
+    '  vec2 w12 = w1 + w2;',
+    '  vec2 a = (t1 - 1.0) / size;',
+    '  vec2 b = (t1 + w2 / w12) / size;',
+    '  vec2 c = (t1 + 2.0) / size;',
+    '  vec3 r = texture(uPrev, vec2(a.x, a.y)).rgb * w0.x * w0.y',
+    '    + texture(uPrev, vec2(b.x, a.y)).rgb * w12.x * w0.y',
+    '    + texture(uPrev, vec2(c.x, a.y)).rgb * w3.x * w0.y',
+    '    + texture(uPrev, vec2(a.x, b.y)).rgb * w0.x * w12.y',
+    '    + texture(uPrev, vec2(b.x, b.y)).rgb * w12.x * w12.y',
+    '    + texture(uPrev, vec2(c.x, b.y)).rgb * w3.x * w12.y',
+    '    + texture(uPrev, vec2(a.x, c.y)).rgb * w0.x * w3.y',
+    '    + texture(uPrev, vec2(b.x, c.y)).rgb * w12.x * w3.y',
+    '    + texture(uPrev, vec2(c.x, c.y)).rgb * w3.x * w3.y;',
+    // The negative lobes can undershoot next to a bright edge.
+    '  return max(r, 0.0);',
+    '}',
     'void main() {',
     '  vec2 p = (vUv - 0.5) * uAspect;',
     '  float c = cos(uRot), s = sin(uRot);',
     '  p = mat2(c, s, -s, c) * p / uZoom;',
     '  p += uWarp * vec2(sin(p.y * 7.0 + uTime * 0.9), sin(p.x * 7.0 - uTime * 1.1));',
     '  vec2 uv = p / uAspect + 0.5;',
-    '  vec3 col = texture(uPrev, uv).rgb;',
+    '  vec3 col = sharpSample(uv);',
     '  col = mix(col, col.gbr, uDrift);',
     '  float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);',
     '  outColor = vec4(col * uFade * inside, 1.0);',
@@ -139,7 +169,9 @@
     'out vec4 outColor;',
     'void main() {',
     '  vec2 d = gl_PointCoord - 0.5;',
-    '  float f = exp(-dot(d, d) * 18.0);',
+    // A tight core for a crisp line, with a faint halo for the glow.
+    '  float r2 = dot(d, d);',
+    '  float f = exp(-r2 * 60.0) + 0.35 * exp(-r2 * 14.0);',
     '  outColor = vec4(vColor * f * vAlpha, 1.0);',
     '}',
   ].join('\n');
@@ -413,9 +445,9 @@
       gl.uniform2f(feedback.u.uAspect, aspect, 1);
       gl.uniform1f(feedback.u.uZoom, Math.pow(1.006 + input.bass * 0.012 + pulse * 0.02, f));
       gl.uniform1f(feedback.u.uRot, (0.0025 + input.mid * 0.004) * f * spin);
-      gl.uniform1f(feedback.u.uFade, Math.pow(0.92, f));
+      gl.uniform1f(feedback.u.uFade, Math.pow(FADE, f));
       gl.uniform1f(feedback.u.uTime, time);
-      gl.uniform1f(feedback.u.uWarp, (0.0015 + input.mid * 0.004) * Math.min(f, 3));
+      gl.uniform1f(feedback.u.uWarp, (0.001 + input.mid * 0.003) * Math.min(f, 3));
       gl.uniform1f(feedback.u.uDrift, Math.min(0.5, 0.012 * f));
       gl.bindVertexArray(quadVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
