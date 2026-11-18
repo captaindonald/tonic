@@ -11,7 +11,7 @@
   // Not standalone-executable JavaScript: buildVisualizerScript() in
   // src/visualizer.ts replaces this bare token with the current settings as
   // JSON on every injection, and exports the spelling as VISUALIZER_CONFIG_TOKEN.
-  /** @type {{ strip: boolean, style: string, label: string }} */
+  /** @type {{ strip: boolean, style: string, delayMs: number, label: string }} */
   var CONFIG = __SIDRA_VISUALIZER_CONFIG__;
 
   // A re-injection on SPA navigation hands the running instance the current
@@ -37,10 +37,14 @@
   var PEAK_HOLD_MS = 600;
   var PEAK_FALL_PER_SECOND = 0.9;
   var POLL_MS = 500;
+  // Mirrors src/visualizerStyle.ts; the main process clamps what it stores.
+  var DELAY_MAX_MS = 500;
+  var DELAY_STEP_MS = 10;
 
   var state = {
     strip: false,
     style: 'spectrum',
+    delayMs: 50,
     label: 'Visualizer',
     overlayOpen: false,
   };
@@ -51,6 +55,8 @@
   var ctx = null;
   /** @type {AnalyserNode | null} */
   var analyser = null;
+  /** @type {DelayNode | null} */
+  var delay = null;
   /** @type {Float32Array | null} */
   var spectrum = null;
   /** @type {MediaStreamAudioSourceNode | null} */
@@ -97,7 +103,13 @@
     } catch (e) {
       ctx = new AudioContext();
     }
+    // Every view reads the analyser, so delaying its input holds the strip,
+    // the spectrum and Retro 3D back together, until they land with the sound
+    // instead of ahead of it (see VISUALIZER_DELAY_DEFAULT_MS).
+    delay = ctx.createDelay(DELAY_MAX_MS / 1000);
+    delay.delayTime.value = state.delayMs / 1000;
     analyser = ctx.createAnalyser();
+    delay.connect(analyser);
     analyser.fftSize = 8192;
     analyser.smoothingTimeConstant = 0.55;
     spectrum = new Float32Array(analyser.frequencyBinCount);
@@ -149,7 +161,7 @@
     if (!ctx) createContext();
     if (source) source.disconnect();
     source = ctx.createMediaStreamSource(new MediaStream([track]));
-    source.connect(analyser);
+    source.connect(delay);
     for (var i = 0; i < tracks.length - 1; i++) {
       stream.removeTrack(tracks[i]);
       tracks[i].stop();
@@ -227,8 +239,10 @@
 
   /**
    * Fill `out` with band levels in 0..1. A band narrower than one bin (the
-   * bass, at this FFT size) interpolates between its neighbours instead of
-   * repeating one bin across several bars.
+   * bass, at this FFT size) follows a Catmull-Rom curve through the bins
+   * around it instead of repeating one bin across several bars. The curve
+   * matters on a wide screen: at 190 bars about 50 bass bars sit between
+   * bins, and straight lines between them read as ramps.
    */
   function readBands(out) {
     analyser.getFloatFrequencyData(spectrum);
@@ -241,7 +255,11 @@
         var x = (b.lo + b.hi) / 2;
         var k = Math.min(Math.floor(x), last - 1);
         var t = x - k;
-        db = spectrum[k] * (1 - t) + spectrum[k + 1] * t;
+        var p0 = spectrum[k > 0 ? k - 1 : 0];
+        var p1 = spectrum[k];
+        var p2 = spectrum[k + 1];
+        var p3 = spectrum[k + 2 <= last ? k + 2 : last];
+        db = p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
       } else {
         db = -Infinity;
         var end = Math.min(Math.ceil(b.hi), last);
@@ -472,7 +490,7 @@
 
   // --- Full-window overlay ----------------------------------------------------
 
-  /** @type {{ root: HTMLElement, backdrop: HTMLElement, content: HTMLElement, art: HTMLImageElement, title: HTMLElement, subtitle: HTMLElement, canvas: HTMLCanvasElement, retroCanvas: HTMLCanvasElement, info: HTMLElement, infoTitle: HTMLElement, infoSubtitle: HTMLElement } | null} */
+  /** @type {{ root: HTMLElement, backdrop: HTMLElement, content: HTMLElement, art: HTMLImageElement, title: HTMLElement, subtitle: HTMLElement, canvas: HTMLCanvasElement, retroCanvas: HTMLCanvasElement, info: HTMLElement, infoTitle: HTMLElement, infoSubtitle: HTMLElement, sync: HTMLElement } | null} */
   var overlay = null;
   var overlayMeter = null;
   /** @type {{ frame: (input: object) => void, destroy: () => void } | null} */
@@ -486,7 +504,11 @@
   var overlayTrackId = '';
   var overlayColours = [];
   var cursorTimer = 0;
-  var OVERLAY_BARS = 72;
+  // The full-window spectrum gets one bar per BAR_PITCH_PX of width, so a
+  // 5120 px ultrawide resolves about 190 bands where a laptop shows 72.
+  var BAR_PITCH_PX = 24;
+  var MIN_OVERLAY_BARS = 72;
+  var MAX_OVERLAY_BARS = 256;
 
   function buildOverlay() {
     var root = document.createElement('div');
@@ -597,10 +619,27 @@
     info.appendChild(infoTitle);
     info.appendChild(infoSubtitle);
 
+    // The sync readout the [ and ] keys show while they nudge the delay.
+    var sync = document.createElement('div');
+    sync.setAttribute('style', [
+      'position: absolute',
+      'top: 4vh',
+      'right: 4vw',
+      'padding: 0.6em 1em',
+      'border-radius: 8px',
+      'background: rgba(0, 0, 0, 0.55)',
+      'font-size: clamp(13px, 1.8vh, 22px)',
+      'font-variant-numeric: tabular-nums',
+      'opacity: 0',
+      'transition: opacity 300ms ease',
+      'pointer-events: none',
+    ].join('; '));
+
     root.appendChild(backdrop);
     root.appendChild(content);
     root.appendChild(retroCanvas);
     root.appendChild(info);
+    root.appendChild(sync);
 
     root.addEventListener('click', closeOverlay);
     root.addEventListener('mousemove', function () {
@@ -609,7 +648,7 @@
     });
     return {
       root: root, backdrop: backdrop, content: content, art: art, title: title, subtitle: subtitle, canvas: canvas,
-      retroCanvas: retroCanvas, info: info, infoTitle: infoTitle, infoSubtitle: infoSubtitle,
+      retroCanvas: retroCanvas, info: info, infoTitle: infoTitle, infoSubtitle: infoSubtitle, sync: sync,
     };
   }
 
@@ -667,6 +706,33 @@
     overlay.backdrop.style.display = showRetro ? 'none' : 'block';
     overlay.content.style.display = showRetro ? 'none' : 'flex';
     if (showRetro) showInfoBriefly();
+  }
+
+  var syncTimer = 0;
+
+  function applyDelay() {
+    if (delay) delay.delayTime.value = state.delayMs / 1000;
+  }
+
+  /**
+   * Move the sync delay by one step, apply it at once and hand it to the main
+   * process to store. The readout says which way the picture moved, because
+   * "delay" alone does not say whether a bigger number is earlier or later.
+   * @param {number} direction -1 for earlier, 1 for later
+   */
+  function nudgeDelay(direction) {
+    var ms = Math.min(DELAY_MAX_MS, Math.max(0, state.delayMs + direction * DELAY_STEP_MS));
+    state.delayMs = ms;
+    applyDelay();
+    var bridge = window.AMWrapper;
+    if (bridge && bridge.ipcRenderer) bridge.ipcRenderer.send('visualizer:delay', ms);
+    if (!overlay) return;
+    overlay.sync.textContent = 'Picture delayed ' + ms + ' ms   [ earlier · later ]';
+    overlay.sync.style.opacity = '1';
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () {
+      if (overlay) overlay.sync.style.opacity = '0';
+    }, 1800);
   }
 
   function showCursorBriefly() {
@@ -764,7 +830,8 @@
     var dpr = fitCanvas(canvas);
     var w = canvas.width;
     var h = canvas.height;
-    if (!overlayMeter) overlayMeter = createMeter(OVERLAY_BARS);
+    var bars = Math.max(MIN_OVERLAY_BARS, Math.min(MAX_OVERLAY_BARS, Math.round(w / dpr / BAR_PITCH_PX)));
+    if (!overlayMeter || overlayMeter.level.length !== bars) overlayMeter = createMeter(bars);
     var moving = stepMeter(overlayMeter, live, dt, now);
 
     var g = canvas.getContext('2d');
@@ -772,8 +839,8 @@
     // Bars stand on a baseline two thirds down, with a faded reflection below.
     var base = h * 0.68;
     var maxH = base - 8 * dpr;
-    var gap = Math.max(2 * dpr, (w / OVERLAY_BARS) * 0.28);
-    var barW = (w - gap * (OVERLAY_BARS - 1)) / OVERLAY_BARS;
+    var gap = Math.max(2 * dpr, (w / bars) * 0.28);
+    var barW = (w - gap * (bars - 1)) / bars;
 
     var c0 = overlayColours[0] || accentColour();
     var c1 = overlayColours[1] || overlayColours[0] || '#ffffff';
@@ -781,7 +848,7 @@
     grad.addColorStop(0, c0);
     grad.addColorStop(1, c1);
 
-    for (var i = 0; i < OVERLAY_BARS; i++) {
+    for (var i = 0; i < bars; i++) {
       var x = i * (barW + gap);
       var bh = overlayMeter.level[i] * maxH;
       g.fillStyle = grad;
@@ -857,6 +924,10 @@
     state.label = typeof config.label === 'string' && config.label ? config.label : state.label;
     state.strip = !!config.strip;
     state.style = config.style === 'retro' ? 'retro' : 'spectrum';
+    if (typeof config.delayMs === 'number' && isFinite(config.delayMs)) {
+      state.delayMs = Math.min(DELAY_MAX_MS, Math.max(0, config.delayMs));
+      applyDelay();
+    }
     applyOverlayStyle();
     if (state.strip) {
       attachStrip();
@@ -875,6 +946,13 @@
       event.preventDefault();
       event.stopPropagation();
       closeOverlay();
+      return;
+    }
+    if (state.overlayOpen && !event.altKey && !event.ctrlKey && !event.metaKey
+      && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+      event.preventDefault();
+      event.stopPropagation();
+      nudgeDelay(event.code === 'BracketLeft' ? -1 : 1);
       return;
     }
     if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyV') {

@@ -8,7 +8,7 @@
 import { Conf } from 'electron-conf/main';
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
-import { isVisualizerStyle, type VisualizerStyle } from './visualizerStyle';
+import { VISUALIZER_DELAY_DEFAULT_MS, clampVisualizerDelay, isVisualizerStyle, type VisualizerStyle } from './visualizerStyle';
 import {
   DEFAULT_SERVICE_ID,
   isMusicServiceId,
@@ -36,6 +36,7 @@ interface StoreSchema {
   'closeToTray.enabled': boolean;
   'visualizer.strip': boolean;
   'visualizer.style': VisualizerStyle;
+  'visualizer.delayMs': number;
   'lastfm.enabled': boolean;
   'lastfm.sessionKey': string | null;
   'lastfm.username': string | null;
@@ -126,6 +127,17 @@ export function getVisualizerStyle(): VisualizerStyle {
 
 export function setVisualizerStyle(style: VisualizerStyle): void {
   setConfigValue('visualizer.style', style);
+}
+
+// A hand-edited value outside the range is clamped, and a non-number reads as
+// the default, so the page always receives a delay it can apply.
+export function getVisualizerDelayMs(): number {
+  const stored: unknown = getConfigValue('visualizer.delayMs', VISUALIZER_DELAY_DEFAULT_MS);
+  return clampVisualizerDelay(stored) ?? VISUALIZER_DELAY_DEFAULT_MS;
+}
+
+export function setVisualizerDelayMs(ms: number): void {
+  setConfigValue('visualizer.delayMs', ms);
 }
 
 export function getDiscordEnabled(): boolean {

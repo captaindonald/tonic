@@ -5,9 +5,16 @@
  */
 import type { WebContents } from 'electron';
 import log from 'electron-log/main';
-import { getVisualizerStripEnabled, getVisualizerStyle, setVisualizerStripEnabled, setVisualizerStyle } from './config';
+import {
+  getVisualizerDelayMs,
+  getVisualizerStripEnabled,
+  getVisualizerStyle,
+  setVisualizerDelayMs,
+  setVisualizerStripEnabled,
+  setVisualizerStyle,
+} from './config';
 import { getTrayStrings } from './i18n';
-import type { VisualizerStyle } from './visualizerStyle';
+import { clampVisualizerDelay, type VisualizerStyle } from './visualizerStyle';
 
 const visualizerLog = log.scope('visualizer');
 
@@ -21,6 +28,7 @@ export const VISUALIZER_CONFIG_TOKEN = '__SIDRA_VISUALIZER_CONFIG__';
 export interface VisualizerConfig {
   strip: boolean;
   style: VisualizerStyle;
+  delayMs: number;
   label: string;
 }
 
@@ -31,7 +39,12 @@ export function setVisualizerTarget(callback: () => WebContents | null): void {
 }
 
 export function currentVisualizerConfig(): VisualizerConfig {
-  return { strip: getVisualizerStripEnabled(), style: getVisualizerStyle(), label: getTrayStrings().visualizer };
+  return {
+    strip: getVisualizerStripEnabled(),
+    style: getVisualizerStyle(),
+    delayMs: getVisualizerDelayMs(),
+    label: getTrayStrings().visualizer,
+  };
 }
 
 /**
@@ -78,4 +91,19 @@ export function setVisualizerFullWindowStyle(style: VisualizerStyle): void {
 
 export function openVisualizer(): void {
   callInPage('open()');
+}
+
+/**
+ * The sync delay the page sends when the [ and ] keys nudge it. The page has
+ * already applied it, so nothing is sent back; storing it is what carries it
+ * across a reload. The value crosses from the page untyped, so anything that
+ * is not a number is refused.
+ */
+export function handleVisualizerDelay(value: unknown): void {
+  const ms = clampVisualizerDelay(value);
+  if (ms === null) {
+    visualizerLog.warn('ignored a sync delay that is not a number:', value);
+    return;
+  }
+  setVisualizerDelayMs(ms);
 }
